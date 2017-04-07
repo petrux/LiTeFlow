@@ -1,5 +1,6 @@
 """Test module for liteflow.layers module."""
 
+import numpy as np
 import tensorflow as tf
 
 import mock
@@ -479,6 +480,101 @@ class LayerTest(tf.test.TestCase):
         self.assertEquals(inp, args[0])
 
         self.assertEquals(1, _build.call_count)
+
+
+class BahdanauAttentionTest(tf.test.TestCase):
+    """Test case for the liteflow.layers.BahdanauAttention class."""
+
+    _SEED = 23
+
+    def setUp(self):
+        tf.reset_default_graph()
+        tf.set_random_seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)
+
+    def _get_names(self, key):
+        collection = tf.get_collection(key)
+        names = [var.op.name for var in collection]
+        return set(sorted(names))
+
+    def _assert_all_in(self, variables, key):
+        ref = self._get_names(key)
+        for var in variables:
+            self.assertIn(
+                var.op.name, ref,
+                var.op.name + ' not in ' + key)
+
+    def _assert_none_in(self, variables, key):
+        ref = self._get_names(key)
+        for var in variables:
+            self.assertNotIn(
+                var.op.name, ref,
+                var.op.name + ' in ' + key)
+
+    def test_base(self):
+        """Test the attention mechanism.
+
+        1. Test that the attention scores that are computed
+           are similar to the gold ones.
+        2. check that all the attention layer variables are in the
+           tf.GraphKeys.GLOBAL_VARIABLES
+        3. check that the same variables are/are not in the
+           tf.GraphKeys.TRAINABLE_VARIABLES, depending on if the
+           layer is trainable or not.
+        """
+        self._test_base(trainable=True)
+        self._test_base(trainable=False)
+
+    def _test_base(self, trainable):
+        state_size = 3
+        query_size = 2
+        attention_size = 4
+
+        states = np.array([[[0.1, 0.1, 0.1],
+                            [0.2, 0.2, 0.2],
+                            [0.3, 0.3, 0.3],
+                            [0.4, 0.4, 0.4],
+                            [0.5, 0.5, 0.5]],
+                           [[1., 1., 1.],
+                            [0.9, 0.9, 0.9],
+                            [0.8, 0.8, 0.8],
+                            [0.7, 0.7, 0.7],
+                            [0.6, 0.6, 0.6]]])
+        queries = [np.asarray([[1, 1], [2, 2]]), np.asarray([[.5, .5], [4, 4]])]
+        scores = [np.array([[0.0904, 0.1017, 0.1128, 0.1238, 0.1345],
+                            [0.2417, 0.2339, 0.2259, 0.2176, 0.2090]]),
+                  np.array([[0.0517, 0.0634, 0.0750, 0.0866, 0.0979],
+                            [0.3201, 0.3157, 0.3111, 0.3063, 0.3012]])]
+
+        tf.reset_default_graph()
+        self.assertEquals(0, len(self._get_names(tf.GraphKeys.TRAINABLE_VARIABLES)))
+        init = tf.constant_initializer(0.1)
+        with tf.variable_scope('Scope', initializer=init) as scope:
+            states_ = tf.placeholder(dtype=tf.float32, shape=[None, None, state_size], name='S')
+            queries_ = [tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q01'),
+                        tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q02')]
+            attention = layers.BahdanauAttention(
+                states_, attention_size, trainable=trainable, scope=scope)
+            self.assertEquals(trainable, attention.trainable)
+            scores_ = [attention(q) for q in queries_]
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            results = sess.run(scores_, {
+                states_: states,
+                queries_[0]: queries[0],
+                queries_[1]: queries[1]
+            })
+
+        for act, exp in zip(results, scores):
+            self.assertAllClose(act, exp, rtol=1e-4, atol=1e-4)
+
+        variables = attention.variables
+        self._assert_all_in(variables, tf.GraphKeys.GLOBAL_VARIABLES)
+        if trainable:
+            self._assert_all_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
+        else:
+            self._assert_none_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
 
 
 if __name__ == '__main__':
