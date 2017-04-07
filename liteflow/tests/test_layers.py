@@ -7,6 +7,7 @@ import mock
 import liteflow.layers as layers
 import liteflow.utils as utils
 
+
 class Layer(layers.Layer):
     """Dummy `layers.Layer` implementation."""
 
@@ -57,6 +58,7 @@ class ScopeTracker(object):
             return inp
         return ScopeTracker(_id)
 
+
 def scopetracker(func):
     """Turns your function into a ScopeTracker.
 
@@ -78,6 +80,7 @@ def scopetracker(func):
     ```
     """
     return ScopeTracker(func)
+
 
 class LayerTest(tf.test.TestCase):
     """Test case for a generic liteflow.layers.Layer implementation."""
@@ -134,6 +137,7 @@ class LayerTest(tf.test.TestCase):
         _build.assert_called_once()
         self.assertEquals(1, len(_build.side_effect.scopes()))
         self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+
     def test_init_scope(self):
         """Test the layer with the scope initialization."""
         self._test_init_scope('Scope')
@@ -375,7 +379,6 @@ class LayerTest(tf.test.TestCase):
             for act, exp in zip(actual, expected):
                 self.assertEquals(act, exp)
 
-
     @mock.patch.object(Layer, '_build')
     def test_reuse_unexisting_build(self, _build):
         """Building with a scope were variables do not exist raise an Error."""
@@ -476,6 +479,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEquals(inp, args[0])
 
         self.assertEquals(1, _build.call_count)
+
 
 if __name__ == '__main__':
     tf.test.main()
