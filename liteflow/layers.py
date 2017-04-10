@@ -207,6 +207,12 @@ class Layer(object):
 
 class BahdanauAttention(Layer):
     """Attention mechanism as in Bahdanau et al. 2015.
+
+    The attention mechanism implemented in this class is the one
+    described by Bahdanau et al. here: https://arxiv.org/abs/1409.0473.
+    The attention states and the query are projected to the attention
+    inner size, then summed together and processed with a tanh and
+    finally dot producted with an attention vector.
     """
 
     _KERNEL_NAME = 'Kernel'
@@ -220,7 +226,9 @@ class BahdanauAttention(Layer):
         described by Bahdanau et al. here: https://arxiv.org/abs/1409.0473.
         The attention states and the query are projected to the attention
         inner size, then summed together and processed with a tanh and
-        finally dot producted with an attention vector.
+        finally dot producted with an attention vector. All the operations
+        are performed on a reference size, named as the attention size, which
+        must be set during the initialization phase (with the `size` argument).
 
         Arguments:
           states: 3-D Tensor of shape [batch, timesteps, state] representing the
