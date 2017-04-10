@@ -64,13 +64,13 @@ class Layer(object):
         self._built = False
         self._scope = None
         self._name = self.__class__.__name__
+        self._variables = []
 
         if scope is not None:
             self._scope = utils.as_scope(scope)
             self._name = self._scope.name
 
     @property
-
     def name(self):
         """The name of the layer."""
         return self._name
@@ -84,6 +84,11 @@ class Layer(object):
     def trainable(self):
         """True if the layer is trainable."""
         return self._trainable
+
+    @property
+    def variables(self):
+        """Return all the variables used by the layer."""
+        return self._variables
 
     @property
     def built(self):
@@ -139,7 +144,9 @@ class Layer(object):
           **kwargs: keyword arguments to be passed to `self._build()`.
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
-        Raises:
+        Raises:        print 'TRAINABLE: ' + str(self._trainable)
+
+
           RuntimeError: if the layer has already been built, i.e. if `self.built`
             is equals to `True`.
 
@@ -196,3 +203,130 @@ class Layer(object):
     def apply(self, inp, *args, **kwargs):
         """Wrapper for the `self.__call__()` method."""
         return self.__call__(inp, *args, **kwargs)
+
+
+class BahdanauAttention(Layer):
+    """Attention mechanism as in Bahdanau et al. 2015.
+
+    The attention mechanism implemented in this class is the one
+    described by Bahdanau et al. here: https://arxiv.org/abs/1409.0473.
+    The attention states and the query are projected to the attention
+    inner size, then summed together and processed with a tanh and
+    finally dot producted with an attention vector.
+    """
+
+    _KERNEL_NAME = 'Kernel'
+    _VECTOR_NAME = 'Vector'
+    _WEIGHTS_NAME = 'Weights'
+
+    def __init__(self, states, size, trainable=True, scope=None):
+        """Initiailzes a new instance of the BahdanauAttention class.
+
+        The attention mechanism implemented in this class is the one
+        described by Bahdanau et al. here: https://arxiv.org/abs/1409.0473.
+        The attention states and the query are projected to the attention
+        inner size, then summed together and processed with a tanh and
+        finally dot producted with an attention vector. All the operations
+        are performed on a reference size, named as the attention size, which
+        must be set during the initialization phase (with the `size` argument).
+
+        Arguments:
+          states: 3-D Tensor of shape [batch, timesteps, state] representing the
+            states on which the attention scores will be computed; the third dimension
+            of the tensor must be statically determined.
+          size: int representing the inner attention size;
+          trainable: if True, variables will be trainable;
+          scope: None, str or tf.VariableScope representing the variable scope
+            of the layer which will be used to create all the needed variables.
+
+        Raises:
+          ValueError: if the last dimension of the `state` argument is not
+            statically determined.
+        """
+        super(BahdanauAttention, self).__init__(trainable=trainable, scope=scope)
+        self._states = states
+        self._size = size
+        self._memory = None
+        self._vector = None
+        self._var_op_names = set()
+
+        # check that the last dimension of the `states`
+        # variable is fully defined.
+        state_size = states.get_shape()[-1].value
+        if state_size is None:
+            raise ValueError('Last dimension of `states` must be defined, found %s'
+                             % str(tf.shape(states)))
+        self._state_size = state_size
+
+    @property
+    def states(self):
+        """The attention states."""
+        return self._states
+
+    @property
+    def size(self):
+        """The attention size."""
+        return self._size
+
+    def _add_var(self, var):
+        key = var.op.name
+        if key not in self._var_op_names:
+            self._var_op_names.add(key)
+            self._variables.append(var)
+
+    def _build(self, *args, **kwargs):
+        """Implement the layer building logic."""
+        batch = tf.shape(self._states)[0]
+        length = tf.shape(self._states)[1]
+        shape = [batch, length, 1, self._state_size]
+        states = tf.reshape(self._states, shape=shape)
+        kernel = tf.get_variable(self._KERNEL_NAME,
+                                 [1, 1, self._state_size, self._size],
+                                 trainable=self._trainable)
+        self._memory = tf.nn.conv2d(states, kernel, [1, 1, 1, 1], "SAME")
+        self._vector = tf.get_variable(self._VECTOR_NAME,
+                                       shape=[self._size],
+                                       trainable=self._trainable)
+        self._add_var(kernel)
+        self._add_var(self._vector)
+
+    def _call(self, query, *args, **kwargs):
+        """Implement the layer logic."""
+        query_size = query.get_shape()[-1].value
+        if query_size is None:
+            raise ValueError(
+                'Last dimension of `query` must be defined, found %s'
+                % str(tf.shape(query)))
+
+        weights = tf.get_variable(self._WEIGHTS_NAME,
+                                  shape=[query_size, self._size],
+                                  trainable=self._trainable)
+        self._add_var(weights)
+        features = tf.reshape(tf.matmul(query, weights), [-1, 1, 1, self._size])
+        activations = self._vector * tf.tanh(self._memory + features)
+        activations = tf.reduce_sum(activations, [2, 3])
+        return activations
+
+    def __call__(self, query, *args, **kwargs):
+        """Calculate the attention scores over `self.states` for the given queries.
+
+        Arguments:
+          query: a 2-D Tensor of shape [batch, query]; the last dimension must
+            be statically determined.
+          *args: additional positional arguments to be passed to `self._call()`.
+          **kwargs: additional keyword arguments to be passed to `self._call()`.
+            **Note**, the kwarg `scope` is reserved for use by the layer.
+
+        Returns:
+          A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
+            dimension of the `self.states` tensor.
+
+        Raises:
+          ValueError: if the last dimension of the `query` argument
+            is not statically determined.
+        """
+        return super(BahdanauAttention, self).__call__(query, *args, **kwargs)
+
+    def apply(self, query, *args, **kwargs):
+        """Wrapper for the `self.__call__()` method."""
+        return super(BahdanauAttention, self).__call__(query, *args, **kwargs)
