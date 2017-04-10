@@ -198,5 +198,59 @@ class FitTrimPadTest(tf.test.TestCase):
         self.assertAllClose(output_expected, output_actual)
 
 
+class SoftmaxTest(tf.test.TestCase):
+    """Test case for the `ops.softmax()` function."""
+
+    def test_mask(self):
+        """Test a masked softmax.
+
+        The test checks that in correspondence of the masked
+        elements the softmax evaluates to `0.0` and that the sum
+        along the -1 axis is `1.0`.
+        """
+
+        logits = tf.constant([[3.0, 1.0, 0.2, 23.0],
+                              [1.0, 23.0, 0.2, 3.0],
+                              [23.0, 0.2, 3.0, 1.0]],
+                             dtype=tf.float32)
+        mask = tf.constant([[1.0, 1.0, 1.0, 0.0],
+                            [1.0, 0.0, 1.0, 1.0],
+                            [0.0, 1.0, 1.0, 1.0]],
+                           dtype=tf.float32)
+        softmax = ops.softmax(logits, mask=mask)
+
+        output_expected = [[0.8360188, 0.11314284, 0.05083836, 0.0],
+                           [0.11314284, 0.0, 0.05083836, 0.8360188],
+                           [0.0, 0.05083836, 0.8360188, 0.11314284]]
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            output_actual = sess.run(softmax)
+        self.assertAllClose(output_expected, output_actual, rtol=1e-5, atol=1e-5)
+
+    def test_no_mask(self):
+        """Test a softmax without a mask."""
+
+        logits = tf.constant([[[3.0, 1.0, 0.2],
+                               [1.0, 0.2, 3.0],
+                               [0.2, 3.0, 1.0]],
+                              [[3.0, 1.0, 0.2],
+                               [1.0, 0.2, 3.0],
+                               [0.2, 3.0, 1.0]]], dtype=tf.float32)
+        softmax = ops.softmax(logits)
+
+        output_expected = [[[0.83601880, 0.11314284, 0.05083836],
+                            [0.11314284, 0.05083836, 0.83601880],
+                            [0.05083836, 0.83601880, 0.11314284]],
+                           [[0.83601880, 0.11314284, 0.05083836],
+                            [0.11314284, 0.05083836, 0.83601880],
+                            [0.05083836, 0.83601880, 0.11314284]]]
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            output_actual = sess.run(softmax)
+        self.assertAllClose(output_actual, output_expected)
+
+
 if __name__ == '__main__':
     tf.test.main()

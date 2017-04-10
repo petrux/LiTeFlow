@@ -210,3 +210,50 @@ def fit(tensor, width):
                      lambda: tensor,
                      lambda: _fit(tensor, width))
     return result
+
+
+def softmax(logits, mask=None, name='softmax'):
+    """Masked softmax along the -1 axis.
+
+    Apply the softmax operator along the -1 axis to the tensor
+    where the masked elements do not partecipate and are replaced
+    with `0.0` in the resulting tensor.
+
+    Arguments:
+      logits: a tensor of any shape.
+      mask: a tensor of the exactly same shape of `logits` made of `1.0` or `0.0`.
+      name: `str`, the name of the scope of the operator.
+
+    Returns:
+      a tensor of the same shape of `logits` containing the softmax of the
+        input values evaluated only on the elements allowed by the mask
+        (`0.0` otherwise).
+
+    Example:
+    >>> import tensorflow as tf
+    >>> from liteflow import ops
+    >>> logits = tf.constant([[3.0, 1.0, 0.2, 23.0],
+                              [1.0, 23.0, 0.2, 3.0],
+                              [23.0, 0.2, 3.0, 1.0]],
+                             dtype=tf.float32)
+    >>> mask = tf.constant([[1.0, 1.0, 1.0, 0.0],
+                            [1.0, 0.0, 1.0, 1.0],
+                            [0.0, 1.0, 1.0, 1.0]],
+                           dtype=tf.float32)
+    >>> softmax = ops.softmax(logits, mask=mask)
+    >>> with tf.Session() as sess:
+    >>>     sess.run(tf.global_variables_initializer())
+    >>>     print sess.run(softmax)
+
+    [[ 0.83601874  0.11314283  0.05083835  0.        ]
+     [ 0.11314284  0.          0.05083836  0.8360188 ]
+     [ 0.          0.05083836  0.8360188   0.11314284]]
+    """
+    if mask is None:
+        return tf.nn.softmax(logits, dim=-1, name=name)
+
+    with tf.variable_scope(name) as _:
+        exps = tf.exp(logits)
+        masked = (exps * mask)
+        sums = tf.reduce_sum(masked, axis=-1, keep_dims=True)
+        return masked/sums
