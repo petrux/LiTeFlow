@@ -252,5 +252,34 @@ class SoftmaxTest(tf.test.TestCase):
         self.assertAllClose(output_actual, output_expected)
 
 
+class TimesliceTest(tf.test.TestCase):
+    """Test for the `ops.timeslice()` function."""
+
+    def test_timeslice(self):
+        """Test.
+        """
+        tensor = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        indices = tf.placeholder(dtype=tf.int32, shape=[None])
+        outputs = ops.timeslice(tensor, indices)
+
+        tensor_actual = np.array([[[0.01, 0.01, 0.01],
+                                   [0.02, 0.02, 0.02],
+                                   [0.03, 0.03, 0.03],
+                                   [0.04, 0.04, 0.04]],
+                                  [[0.1, 0.1, 0.1],
+                                   [0.2, 0.2, 0.2],
+                                   [23, 23, 23],
+                                   [23, 23, 23]]],
+                                 dtype=np.float32)  # pylint: disable=I0011,E1101
+        indices_actual = np.array([3, 1], dtype=np.int32)  # pylint: disable=I0011,E1101
+        outputs_expected = np.array([[0.04, 0.04, 0.04], [0.2, 0.2, 0.2]],
+                                    dtype=np.float32)  # pylint: disable=I0011,E1101
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            outputs_actual = sess.run(outputs, {tensor: tensor_actual, indices: indices_actual})
+        self.assertAllClose(outputs_expected, outputs_actual)
+        print outputs_actual
+
 if __name__ == '__main__':
     tf.test.main()
