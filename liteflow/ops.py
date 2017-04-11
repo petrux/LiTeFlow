@@ -257,3 +257,50 @@ def softmax(logits, mask=None, name='softmax'):
         masked = (exps * mask)
         sums = tf.reduce_sum(masked, axis=-1, keep_dims=True)
         return masked/sums
+
+def timeslice(tensor, indices, name='timeslice'):
+    """Slices a 3D tensor on the 1 axis.
+
+    Given a 3D tensor of shape `[batch, timesteps, ...]` and a list of
+    indices of shape `[batch]`, slice the input tensor along the `timesteps`
+    axis and returns a 2D tensor of shape `[batch, ...]`.
+
+
+    Arguments:
+      tensor: a 3D tensor of shape `[batch, timesteps, ...]`.
+      indices: a list of int or a 1D tensor of shape `[batch]`.
+      name: the variable scope name for the op.
+
+    Returns:
+      A 2D tensor where the i-th component is the vector at the indices[i]
+      position in the i-th sequence of the input tensor.
+
+    Example:
+    >>> import tensorflow as tf
+    >>> from liteflow import ops
+    >>> tensor = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+    >>> indices = tf.placeholder(dtype=tf.int32, shape=[None])
+    >>> outputs = ops.timeslice(tensor, indices)
+    >>> tensor_actual = np.array([[[0.01, 0.01, 0.01],
+                                   [0.02, 0.02, 0.02],
+                                   [0.03, 0.03, 0.03],
+                                   [0.04, 0.04, 0.04]],
+                                  [[0.1, 0.1, 0.1],
+                                   [0.2, 0.2, 0.2],
+                                   [23, 23, 23],
+                                   [23, 23, 23]]],
+                                 dtype=np.float32)
+    >>> indices_actual = np.array([3, 1], dtype=np.int32)  # pylint: disable=I0011,E1101
+    >>> outputs_expected = np.array([[0.04, 0.04, 0.04], [0.2, 0.2, 0.2]],
+                                    dtype=np.float32)  # pylint: disable=I0011,E1101
+    >>> with tf.Session() as sess:
+    >>>     sess.run(tf.global_variables_initializer())
+    >>>     print sess.run(outputs, {tensor: tensor_actual, indices: indices_actual})
+    [[ 0.04  0.04  0.04]
+     [ 0.2   0.2   0.2 ]]
+    """
+    with tf.variable_scope(name) as _:
+        batch_range = tf.range(tf.shape(tensor)[0])
+        indices = tf.stack([batch_range, indices], axis=1)
+        result = tf.gather_nd(tensor, indices)
+        return result
