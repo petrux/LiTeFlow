@@ -1,0 +1,12 @@
+appdirs==1.4.3
+funcsigs==1.0.2
+mock==2.0.0
+numpy==1.12.1
+packaging==16.8
+pbr==2.1.0
+pkg-resources==0.0.0
+protobuf==3.2.0
+pyparsing==2.2.0
+pyspark==2.1.0+hadoop2.7
+six==1.10.0
+tensorflow==1.0.1
