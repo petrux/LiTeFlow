@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(name='liteflow',
       version='0.1',
-      description='Liteweight TensorFlow extensio library',
+      description='Liteweight TensorFlow extension library',
       url='https://github.com/petrux/LiTeFlow',
       author='Giulio Petrucci (petrux)',
       author_email='giulio.petrucci@gmail.com',
