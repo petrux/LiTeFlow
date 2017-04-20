@@ -1,4 +1,10 @@
-"""Vocabularies for managing symbols encoding/decoding."""
+"""Vocabularies for managing symbols encoding/decoding.
+
+In this module, a base class `BaseVocabulary` defines the main API for a vocabulary
+that maps words to integer values and viceversa. Such poblem is very common dealing
+with natural language processing tasks, so a shared API and some already implemented
+code can be handy sometimes.
+"""
 
 import abc
 
@@ -24,7 +30,9 @@ class BaseVocabulary(object):
           `True` if the word is contained in the vocabulary,
             `False` otherwise.
         """
-        pass
+        raise NotImplementedError(
+            """The abstract method `contains(self, word)` """
+            """must be implemented in subclasses.""")
 
     @abc.abstractmethod
     def index(self, word):
@@ -40,7 +48,9 @@ class BaseVocabulary(object):
         Raises:
           ValueError: if the word is not in the vocabulary.
         """
-        pass
+        raise NotImplementedError(
+            """The abstract method `index(self, word)` """
+            """must be implemented in subclasses.""")
 
     @abc.abstractmethod
     def word(self, index):
@@ -56,17 +66,23 @@ class BaseVocabulary(object):
           ValueError: if the index value is not between 0 and the
             number of words contained in the vocabulary minus 1.
         """
-        pass
+        raise NotImplementedError(
+            """The abstract method `word(self, index)` """
+            """must be implemented in subclasses.""")
 
     @abc.abstractmethod
     def size(self):
         """Get the number of words in the vocabulary."""
-        pass
+        raise NotImplementedError(
+            """The abstract method `size(self)` """
+            """must be implemented in subclasses.""")
 
     @abc.abstractmethod
     def items(self):
         """Return an iterator over the pairs (index, word)."""
-        pass
+        raise NotImplementedError(
+            """The abstract method `items(self)` """
+            """must be implemented in subclasses.""")
 
     def __contains__(self, item):
         """Magic method wrapping the `contains()` method."""
@@ -134,3 +150,4 @@ class InMemoryVocabulary(BaseVocabulary):
         self._words.append(word)
         self._index[word] = index
         return index
+    
