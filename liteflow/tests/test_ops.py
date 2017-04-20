@@ -279,7 +279,7 @@ class TimesliceTest(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             outputs_actual = sess.run(outputs, {tensor: tensor_actual, indices: indices_actual})
         self.assertAllClose(outputs_expected, outputs_actual)
-        print outputs_actual
+
 
 if __name__ == '__main__':
     tf.test.main()
