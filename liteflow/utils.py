@@ -58,3 +58,29 @@ def get_variables(prefix=None):
     prefix = prefix or tf.get_variable_scope().name
     return [var for var in tf.global_variables()
             if var.name.startswith(prefix)]
+
+
+def dypes(tensors):
+    """Get the `dtype` for tensors in a list.
+
+    Arguments:
+      tensors: an iterable of `tf.Tensor`.
+
+    Returns:
+      a `list` of `dtype`s, one for each tensor in `tensors`,
+        representing their `dtype`.
+    """
+    return [t.dtype for t in tensors]
+
+
+def shapes(tensors):
+    """Get the static shapes of tensors in a list.
+
+    Arguments:
+      tensors: an iterable of `tf.Tensor`.
+
+    Returns:
+      a `list` of `tf.TensorShape`, one for each tensor in `tensors`,
+        representing their static shape (via `tf.Tensor.get_shape()`).
+    """
+    return [t.get_shape() for t in tensors]
