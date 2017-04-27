@@ -5,7 +5,7 @@ import tensorflow as tf
 
 def shuffle(tensors,
             capacity=32,
-            min_after_dequeue=64,
+            min_after_dequeue=16,
             num_threads=1,
             dtypes=None,
             shapes=None,
@@ -25,7 +25,7 @@ def shuffle(tensors,
         default value set to 1.
       min_after_dequeue: (Optional) minimum number of elements to remain in the
         queue after a `dequeue` or `dequeu_many` has been performend,
-        in order to ensure better mixing of elements; default value set to 64.
+        in order to ensure better mixing of elements; default value set to 16.
       dtypes: (Optional) list of `DType` objects, one for each tensor in `tensors`;
         if not provided, will be inferred from `tensors`.
       shapes: (Optional) list of shapes, one for each tensor in `tensors`.
@@ -60,7 +60,7 @@ def shuffle_batch(tensors,
                   batch_size,
                   capacity=32,
                   num_threads=1,
-                  min_after_dequeue=64,
+                  min_after_dequeue=16,
                   dtypes=None,
                   shapes=None,
                   seed=None,
@@ -86,7 +86,7 @@ def shuffle_batch(tensors,
         default value set to 1.
       min_after_dequeue: (Optional) minimum number of elements to remain in the
         shuffling queue after a `dequeue` or `dequeu_many` has been performend,
-        in order to ensure better mixing of elements; default value set to 64.
+        in order to ensure better mixing of elements; default value set to 16.
       dtypes: (Optional) list of `DType` objects, one for each tensor in `tensors`;
         if not provided, will be inferred from `tensors`.
       shapes: (Optional) list of shapes, one for each tensor in `tensors`.
