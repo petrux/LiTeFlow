@@ -127,3 +127,41 @@ class GraphHelper(object):
     def put_in_map(self, key, item_key, item_value):
         """Add a `item_key`, `item_value` pair to the map associated to `key`."""
         self._maps[key][item_key] = item_value
+
+
+def get_helper(graph=None):
+    """Get the helper for the given graph.
+
+    Arguments:
+      graph: a `tf.Graph` instance; if `None`, the
+        default graph will be used.
+
+    Returns:
+      the GraphHelper associated to the `graph` instance.
+    """
+    return GraphHelperMap.get(graph)
+
+
+def trainable():
+    """A `True` if the default graph is trainable."""
+    return get_helper().trainable
+
+
+def get_all_map_keys():
+    """Get all the map keys for the default graph helper."""
+    return get_helper().get_all_map_keys()
+
+
+def get_map(key):
+    """Get a copy of the map with the given key from the default graph helper."""
+    return get_helper().get_map(key)
+
+
+def get_map_ref(key):
+    """Get a reference to the map with the given key from the default graph helper."""
+    return get_helper().get_map_ref(key)
+
+
+def put_in_map(key, item_key, item_value):
+    """Put a `item_key`, `item_value` pair to the proper map `key` in the defaul graph helper."""
+    return get_helper().put_in_map(key, item_key, item_value)

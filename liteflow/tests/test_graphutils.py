@@ -101,5 +101,25 @@ class GraphHelperTest(unittest.TestCase):
         self._test_map(graphutils.GraphHelperKeys.TARGETS_MAP)
 
 
+class DefaultTest(unittest.TestCase):
+    """Test case for the module level functions."""
+
+    def test_get_helper(self):
+        """Test for the `liteflow.graphutils.get_helper` function."""
+        graph = tf.get_default_graph()
+        helper = graphutils.get_helper()
+        self.assertIsNotNone(helper)
+        self.assertEquals(helper.graph, graph)
+        self.assertEquals(helper, graphutils.get_helper(graph))
+
+        xgraph = tf.Graph()
+        xhelper = graphutils.get_helper(xgraph)
+        self.assertIsNotNone(xhelper)
+        self.assertEquals(xhelper, graphutils.get_helper(xgraph))
+
+        with xgraph.as_default():
+            self.assertEquals(xhelper, graphutils.get_helper())
+        
+        
 if __name__ == '__main__':
     unittest.main()
