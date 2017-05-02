@@ -102,7 +102,13 @@ class GraphHelperTest(unittest.TestCase):
 
 
 class DefaultTest(unittest.TestCase):
-    """Test case for the module level functions."""
+    """Test case for the module level functions.
+    
+    Remarks: as you can see in the implementation of the
+    `liteflow.graphutils` module, such functions don't worth
+    unit tests, since they just bounce on the default graph
+    helper. Still, tests may be added in the future.
+    """
 
     def test_get_helper(self):
         """Test for the `liteflow.graphutils.get_helper` function."""
