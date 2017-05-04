@@ -50,7 +50,7 @@ class GraphHelperTest(unittest.TestCase):
         tf.reset_default_graph()
         helper = graphutils.GraphHelper(tf.get_default_graph())
         item_key = 'X'
-        item_value = tf.placeholder(tf.float32, shape=[2, 3], name=item_key)
+        item_value = object()
 
         # Get the map and add a key-value pair; since the
         # map is a copy, if we get the map again, the key-value
@@ -100,9 +100,30 @@ class GraphHelperTest(unittest.TestCase):
         """Test the outputs map."""
         self._test_map(graphutils.GraphHelperKeys.TARGETS_MAP)
 
+    def test_loss(self):
+        """Test the loss ops map."""
+        self._test_map(graphutils.GraphHelperKeys.LOSS_OPS_MAP)
+
+    def test_train(self):
+        """Test the train ops map."""
+        self._test_map(graphutils.GraphHelperKeys.LOSS_OPS_MAP)
+
+    def test_summary(self):
+        """Test the summary ops map."""
+        self._test_map(graphutils.GraphHelperKeys.SUMMARY_OPS_MAP)
+
+    def test_eval(self):
+        """Test the eval ops map."""
+        self._test_map(graphutils.GraphHelperKeys.EVAL_OPS_MAP)
 
 class DefaultTest(unittest.TestCase):
-    """Test case for the module level functions."""
+    """Test case for the module level functions.
+
+    Remarks: as you can see in the implementation of the
+    `liteflow.graphutils` module, such functions don't worth
+    unit tests, since they just bounce on the default graph
+    helper. Still, tests may be added in the future.
+    """
 
     def test_get_helper(self):
         """Test for the `liteflow.graphutils.get_helper` function."""
@@ -119,7 +140,7 @@ class DefaultTest(unittest.TestCase):
 
         with xgraph.as_default():
             self.assertEquals(xhelper, graphutils.get_helper())
-        
-        
+
+
 if __name__ == '__main__':
     unittest.main()

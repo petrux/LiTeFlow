@@ -53,10 +53,86 @@ class GraphHelperMap(object):
 
 
 class GraphHelperKeys(object):
-    """Keys for the GraphHelper maps."""
+    """Keys for the GraphHelper maps.
+
+    The following standard keys are specified:
+
+    * `INPUTS_MAP`: a dictionary with strings as keys and
+      tensors as values which are supposed to be the model
+      input tensors.
+    * `TARGETS_MAP`: same as before, for target tensors. Can
+      be left empty in casse of unsupervised learning.
+    * `OUTPUTS_MAP`: same as before, for output tensors.
+    * `LOSS_OPS_MAP`: dictionary for loss ops.
+    * `TRAIN_OPS_MAP`: dictionary for train ops.
+    * `SUMMARY_OPS_MAP`: dictionary for summary ops (e.g. loss values,
+      variables histograms, gradients, ecc). If you merge all of them
+      into a single op, you can use the `SUMMARY_OPS_DEFAULT_ITEM` key.
+    * `EVAL_OPS`: dictionary for the evaluation ops.
+
+    Since it is very common to have just one single tensor/op
+    for the mapped types of tensors/ops, the class offer also
+    some default item keys:
+
+    * `INPUTS_DEFAULT_ITEM`: default item key for `INPUTS_MAP`.
+    * `TARGETS_DEFAULT_ITEM`: default item key for `TARGETS_MAP`.
+    * `OUTPUTS_DEFAULT_ITEM`: default item key for `OUTPUTS_MAP`.
+
+    Example:
+    ```python
+    from liteflow import graphutils
+
+    input_x = tf.placeholder(tf.float32, shape=[128, 512])
+    input_y = tf.placeholder(tf.float32, shape=[128, 1024])
+    target = tf.placeholder(tf.float32, shape=[128])
+
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.INPUTS_MAP,
+        key='x',
+        value=input_x)
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.INPUTS_MAP,
+        key='y',
+        value=input_y)
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.TARGETS_MAP,
+        key=graphutils.GraphHelperKeys.TARGETS_DEFAULT_ITEM,
+        value=input_y)
+    ```
+    """
     INPUTS_MAP = 'inputs'
     TARGETS_MAP = 'targets'
     OUTPUTS_MAP = 'outputs'
+    LOSS_OPS_MAP = 'loss_ops'
+    TRAIN_OPS_MAP = 'train_ops'
+    SUMMARY_OPS_MAP = 'train_summary_ops'
+    EVAL_OPS_MAP = 'eval_ops'
+
+    INPUTS_DEFAULT_ITEM = 'input'
+    TARGETS_DEFAULT_ITEM = 'target'
+    OUTPUTS_DEFAULT_ITEM = 'output'
+    LOSS_OPS_DEFAULT_ITEM = 'loss'
+    TRAIN_OPS_DEFAULT_ITEM = 'train'
+    SUMMARY_OPS_DEFAULT_ITEM = 'summary'
+    EVAL_OPS_DEFAULT_ITEM = 'eval'
+
+    _map_to_def = {
+        INPUTS_MAP: INPUTS_DEFAULT_ITEM,
+        TARGETS_MAP: TARGETS_DEFAULT_ITEM,
+        OUTPUTS_MAP: OUTPUTS_DEFAULT_ITEM,
+        LOSS_OPS_MAP: LOSS_OPS_DEFAULT_ITEM,
+        TRAIN_OPS_MAP: TRAIN_OPS_DEFAULT_ITEM,
+        SUMMARY_OPS_MAP: SUMMARY_OPS_DEFAULT_ITEM,
+        EVAL_OPS_MAP: EVAL_OPS_DEFAULT_ITEM
+    }
+
+    @classmethod
+    def _get_map_keys(cls):
+        return list(cls._map_to_def.iterkeys())
+
+    @classmethod
+    def _get_default_key(cls, map_key):
+        return cls._map_to_def[map_key]
 
 
 class GraphHelper(object):
@@ -76,11 +152,9 @@ class GraphHelper(object):
             raise ValueError('`graph` cannot be `None`.')
         self._graph = graph
         self._trainable = False
-        self._maps = {
-            GraphHelperKeys.INPUTS_MAP: {},
-            GraphHelperKeys.TARGETS_MAP: {},
-            GraphHelperKeys.OUTPUTS_MAP: {}
-        }
+        self._maps = {}
+        for key in GraphHelperKeys._get_map_keys():  # pylint: disable=I0011,W0212
+            self._maps[key] = {}
 
     @property
     def graph(self):
@@ -100,33 +174,50 @@ class GraphHelper(object):
         """Get a tuple with all the map keys."""
         return tuple(self._maps.iterkeys())
 
-    def get_map(self, key):
+    def get_map(self, map_key):
         """Get a copy of the map associated with the given key.
 
         Arguments:
-          key: a `str` which is a key for a map.
+          map_key: a `str` which is a key for a map.
 
         Returns:
           a dictionary which is a copy of the map associated
-            to the given `key`.
+            to the given `map_key`.
         """
-        return copy.copy(self._maps[key])
+        return copy.copy(self._maps[map_key])
 
-    def get_map_ref(self, key):
+    def get_map_ref(self, map_key):
         """Get a reference to the map associated with the given key.
 
         Arguments:
-          key: a `str` which is a key for a map.
+          map_key: a `str` which is a key for a map.
 
         Returns:
           a dictionary which is the actual map associated
-            to the given `key`.
+            to the given `map_key`.
         """
-        return self._maps[key]
+        return self._maps[map_key]
 
-    def put_in_map(self, key, item_key, item_value):
-        """Add a `item_key`, `item_value` pair to the map associated to `key`."""
-        self._maps[key][item_key] = item_value
+    def put_in_map(self, map_key, key, value):
+        """Put a key-value pair in a map.
+
+        Arguments:
+          map_key: a `str` representing the key of the map.
+          key: a `str` representing the key for the item to be added.
+          value: the object to be added to the map.
+        """
+        self._maps[map_key][key] = value
+
+    def get_default_key(self, map_key):
+        """Get the default key for a map.
+
+        Arguments:
+          map_key: a `str` representing the key for a map.
+
+        Returns:
+          a `str` representing the key for the default item in that map.
+        """
+        return GraphHelperKeys._get_default_key(map_key)  # pylint: disable=I0011,W0212
 
 
 def get_helper(graph=None):
@@ -152,16 +243,27 @@ def get_all_map_keys():
     return get_helper().get_all_map_keys()
 
 
-def get_map(key):
+def get_map(map_key):
     """Get a copy of the map with the given key from the default graph helper."""
-    return get_helper().get_map(key)
+    return get_helper().get_map(map_key)
 
 
-def get_map_ref(key):
+def get_map_ref(map_key):
     """Get a reference to the map with the given key from the default graph helper."""
-    return get_helper().get_map_ref(key)
+    return get_helper().get_map_ref(map_key)
 
 
-def put_in_map(key, item_key, item_value):
-    """Put a `item_key`, `item_value` pair to the proper map `key` in the defaul graph helper."""
-    return get_helper().put_in_map(key, item_key, item_value)
+def put_in_map(map_key, key, value):
+    """"Put a key-value pair in a map of the defaul graph helper."""
+    return get_helper().put_in_map(map_key, key, value)
+
+def get_default_key(map_key):
+    """Get the default key for a map of the default graph helper.
+
+    Arguments:
+      map_key: a `str` representing the key for a map.
+
+    Returns:
+      a `str` representing the key for the default item in that map.
+    """
+    return get_helper()._get_default_key(map_key)  # pylint: disable=I0011,W0212
