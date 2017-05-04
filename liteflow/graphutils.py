@@ -100,33 +100,39 @@ class GraphHelper(object):
         """Get a tuple with all the map keys."""
         return tuple(self._maps.iterkeys())
 
-    def get_map(self, key):
+    def get_map(self, map_key):
         """Get a copy of the map associated with the given key.
 
         Arguments:
-          key: a `str` which is a key for a map.
+          map_key: a `str` which is a key for a map.
 
         Returns:
           a dictionary which is a copy of the map associated
-            to the given `key`.
+            to the given `map_key`.
         """
-        return copy.copy(self._maps[key])
+        return copy.copy(self._maps[map_key])
 
-    def get_map_ref(self, key):
+    def get_map_ref(self, map_key):
         """Get a reference to the map associated with the given key.
 
         Arguments:
-          key: a `str` which is a key for a map.
+          map_key: a `str` which is a key for a map.
 
         Returns:
           a dictionary which is the actual map associated
-            to the given `key`.
+            to the given `map_key`.
         """
-        return self._maps[key]
+        return self._maps[map_key]
 
-    def put_in_map(self, key, item_key, item_value):
-        """Add a `item_key`, `item_value` pair to the map associated to `key`."""
-        self._maps[key][item_key] = item_value
+    def put_in_map(self, map_key, key, value):
+        """Put a key-value pair in a map.
+
+        Arguments:
+          map_key: a `str` representing the key of the map.
+          key: a `str` representing the key for the item to be added.
+          value: the object to be added to the map.
+        """
+        self._maps[map_key][key] = value
 
 
 def get_helper(graph=None):
@@ -152,16 +158,16 @@ def get_all_map_keys():
     return get_helper().get_all_map_keys()
 
 
-def get_map(key):
+def get_map(map_key):
     """Get a copy of the map with the given key from the default graph helper."""
-    return get_helper().get_map(key)
+    return get_helper().get_map(map_key)
 
 
-def get_map_ref(key):
+def get_map_ref(map_key):
     """Get a reference to the map with the given key from the default graph helper."""
-    return get_helper().get_map_ref(key)
+    return get_helper().get_map_ref(map_key)
 
 
-def put_in_map(key, item_key, item_value):
-    """Put a `item_key`, `item_value` pair to the proper map `key` in the defaul graph helper."""
-    return get_helper().put_in_map(key, item_key, item_value)
+def put_in_map(map_key, key, value):
+    """"Put a key-value pair in a map of the defaul graph helper."""
+    return get_helper().put_in_map(map_key, key, value)
