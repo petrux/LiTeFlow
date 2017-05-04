@@ -63,10 +63,16 @@ class GraphHelperKeys(object):
     * `TARGETS_MAP`: same as before, for target tensors. Can
       be left empty in casse of unsupervised learning.
     * `OUTPUTS_MAP`: same as before, for output tensors.
+    * `LOSS_OPS_MAP`: dictionary for loss ops.
+    * `TRAIN_OPS_MAP`: dictionary for train ops.
+    * `SUMMARY_OPS_MAP`: dictionary for summary ops (e.g. loss values,
+      variables histograms, gradients, ecc). If you merge all of them
+      into a single op, you can use the `SUMMARY_OPS_DEFAULT_ITEM` key.
+    * `EVAL_OPS`: dictionary for the evaluation ops.
 
-    Since it is very common to have just one single tensors
-    for the mapped types of tensors, the class offer also some
-    default item keys:
+    Since it is very common to have just one single tensor/op
+    for the mapped types of tensors/ops, the class offer also
+    some default item keys:
 
     * `INPUTS_DEFAULT_ITEM`: default item key for `INPUTS_MAP`.
     * `TARGETS_DEFAULT_ITEM`: default item key for `TARGETS_MAP`.
@@ -97,10 +103,36 @@ class GraphHelperKeys(object):
     INPUTS_MAP = 'inputs'
     TARGETS_MAP = 'targets'
     OUTPUTS_MAP = 'outputs'
+    LOSS_OPS_MAP = 'loss_ops'
+    TRAIN_OPS_MAP = 'train_ops'
+    SUMMARY_OPS_MAP = 'train_summary_ops'
+    EVAL_OPS_MAP = 'eval_ops'
 
     INPUTS_DEFAULT_ITEM = 'input'
     TARGETS_DEFAULT_ITEM = 'target'
     OUTPUTS_DEFAULT_ITEM = 'output'
+    LOSS_OPS_DEFAULT_ITEM = 'loss'
+    TRAIN_OPS_DEFAULT_ITEM = 'train'
+    SUMMARY_OPS_DEFAULT_ITEM = 'summary'
+    EVAL_OPS_DEFAULT_ITEM = 'eval'
+
+    _map_to_def = {
+        INPUTS_MAP: INPUTS_DEFAULT_ITEM,
+        TARGETS_MAP: TARGETS_DEFAULT_ITEM,
+        OUTPUTS_MAP: OUTPUTS_DEFAULT_ITEM,
+        LOSS_OPS_MAP: LOSS_OPS_DEFAULT_ITEM,
+        TRAIN_OPS_MAP: TRAIN_OPS_DEFAULT_ITEM,
+        SUMMARY_OPS_MAP: SUMMARY_OPS_DEFAULT_ITEM,
+        EVAL_OPS_MAP: EVAL_OPS_DEFAULT_ITEM
+    }
+
+    @classmethod
+    def _get_map_keys(cls):
+        return list(cls._map_to_def.iterkeys())
+
+    @classmethod
+    def _get_default_key(cls, map_key):
+        return cls._map_to_def[map_key]
 
 
 class GraphHelper(object):
@@ -120,11 +152,9 @@ class GraphHelper(object):
             raise ValueError('`graph` cannot be `None`.')
         self._graph = graph
         self._trainable = False
-        self._maps = {
-            GraphHelperKeys.INPUTS_MAP: {},
-            GraphHelperKeys.TARGETS_MAP: {},
-            GraphHelperKeys.OUTPUTS_MAP: {}
-        }
+        self._maps = {}
+        for key in GraphHelperKeys._get_map_keys():
+            self._maps[key] = {}
 
     @property
     def graph(self):
@@ -177,6 +207,16 @@ class GraphHelper(object):
           value: the object to be added to the map.
         """
         self._maps[map_key][key] = value
+
+    def get_default_key(self, map_key):
+        """Get the default key for a map.
+
+        Arguments:
+          map_key: a `str` representing the key for a map.
+
+        Returns:
+          a `str` representing the key for the default item in that map.
+        """
 
 
 def get_helper(graph=None):
