@@ -153,7 +153,7 @@ class GraphHelper(object):
         self._graph = graph
         self._trainable = False
         self._maps = {}
-        for key in GraphHelperKeys._get_map_keys():
+        for key in GraphHelperKeys._get_map_keys():  # pylint: disable=I0011,W0212
             self._maps[key] = {}
 
     @property
@@ -217,6 +217,7 @@ class GraphHelper(object):
         Returns:
           a `str` representing the key for the default item in that map.
         """
+        return GraphHelperKeys._get_default_key(map_key)  # pylint: disable=I0011,W0212
 
 
 def get_helper(graph=None):
@@ -255,3 +256,14 @@ def get_map_ref(map_key):
 def put_in_map(map_key, key, value):
     """"Put a key-value pair in a map of the defaul graph helper."""
     return get_helper().put_in_map(map_key, key, value)
+
+def get_default_key(map_key):
+    """Get the default key for a map of the default graph helper.
+
+    Arguments:
+      map_key: a `str` representing the key for a map.
+
+    Returns:
+      a `str` representing the key for the default item in that map.
+    """
+    return get_helper()._get_default_key(map_key)  # pylint: disable=I0011,W0212

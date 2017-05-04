@@ -118,7 +118,7 @@ class GraphHelperTest(unittest.TestCase):
 
 class DefaultTest(unittest.TestCase):
     """Test case for the module level functions.
-    
+
     Remarks: as you can see in the implementation of the
     `liteflow.graphutils` module, such functions don't worth
     unit tests, since they just bounce on the default graph
@@ -140,7 +140,7 @@ class DefaultTest(unittest.TestCase):
 
         with xgraph.as_default():
             self.assertEquals(xhelper, graphutils.get_helper())
-        
-        
+
+
 if __name__ == '__main__':
     unittest.main()
