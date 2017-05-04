@@ -53,10 +53,54 @@ class GraphHelperMap(object):
 
 
 class GraphHelperKeys(object):
-    """Keys for the GraphHelper maps."""
+    """Keys for the GraphHelper maps.
+
+    The following standard keys are specified:
+
+    * `INPUTS_MAP`: a dictionary with strings as keys and
+      tensors as values which are supposed to be the model
+      input tensors.
+    * `TARGETS_MAP`: same as before, for target tensors. Can
+      be left empty in casse of unsupervised learning.
+    * `OUTPUTS_MAP`: same as before, for output tensors.
+
+    Since it is very common to have just one single tensors
+    for the mapped types of tensors, the class offer also some
+    default item keys:
+
+    * `INPUTS_DEFAULT_ITEM`: default item key for `INPUTS_MAP`.
+    * `TARGETS_DEFAULT_ITEM`: default item key for `TARGETS_MAP`.
+    * `OUTPUTS_DEFAULT_ITEM`: default item key for `OUTPUTS_MAP`.
+
+    Example:
+    ```python
+    from liteflow import graphutils
+
+    input_x = tf.placeholder(tf.float32, shape=[128, 512])
+    input_y = tf.placeholder(tf.float32, shape=[128, 1024])
+    target = tf.placeholder(tf.float32, shape=[128])
+
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.INPUTS_MAP,
+        key='x',
+        value=input_x)
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.INPUTS_MAP,
+        key='y',
+        value=input_y)
+    graphutils.put_in_map(
+        map_key=graphutils.GraphHelperKeys.TARGETS_MAP,
+        key=graphutils.GraphHelperKeys.TARGETS_DEFAULT_ITEM,
+        value=input_y)
+    ```
+    """
     INPUTS_MAP = 'inputs'
     TARGETS_MAP = 'targets'
     OUTPUTS_MAP = 'outputs'
+
+    INPUTS_DEFAULT_ITEM = 'input'
+    TARGETS_DEFAULT_ITEM = 'target'
+    OUTPUTS_DEFAULT_ITEM = 'output'
 
 
 class GraphHelper(object):
