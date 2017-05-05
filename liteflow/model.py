@@ -146,7 +146,7 @@ class ModelBuildOps(object):
 
     @build_loss_ops.setter
     def build_loss_ops(self, func):
-        self._build_eval_ops = func
+        self._build_loss_ops = func
 
     @property
     def build_train_ops(self):
