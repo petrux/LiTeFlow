@@ -1,4 +1,62 @@
-"""Basic workflow for a handy model creation."""
+"""Basic workflow for a handy model creation.
+
+To build a model, you have to define the network topology, the loss function
+and many other ops. Since you might want to run several experiments with
+different model configurations, ecc., you need a flexible way of changing the
+behaviour of your building process. Such operations can be registered as
+properties of the `ModelBuildOps` class. An instance of such class will be
+passed to the factory method `Model.build` which will take care of invoking
+such operations in the proper order and read in the context -- i.e. via
+tf.Graph collections or liteflow.graphutils.GraphHelper maps -- the needed
+objects.
+
+Example:
+```python
+import tensorflow as tf
+from liteflow import graphutils
+from liteflow import model
+
+# we want to easily switch between two different training algorithms.
+
+def build_sgd_train_ops():
+    loss_map = graphutils.get_map(graphutils.GraphHelperKeys.LOSS_OPS_MAP)
+    loss_op = loss_map[graphutils.GraphHelperKeys.LOSS_OPS_DEFAULT_ITEM]
+    trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    global_step = tf.get_collection(tf.GraphKeys.GLOBAL_STEP)[0]
+    optimizer = tf.train.GradientDescentOptimizer(0.1)
+    train_op = optimizer.minimize(loss, var_list=trainable_vars)
+    graphutils.put_in_map(
+        graphutils.GraphHelperKeys.TRAIN_OPS_MAP,
+        graphutils.GraphHelperKeys.TRAIN_OPS_DEFAULT_ITEM,
+        train_op)
+
+def build_adam_train_ops():
+    loss_map = graphutils.get_map(graphutils.GraphHelperKeys.LOSS_OPS_MAP)
+    loss_op = loss_map[graphutils.GraphHelperKeys.LOSS_OPS_DEFAULT_ITEM]
+    trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    global_step = tf.get_collection(tf.GraphKeys.GLOBAL_STEP)[0]
+    optimizer = tf.train.AdamOptimizer()  # the only different line
+    train_op = optimizer.minimize(loss, var_list=trainable_vars)
+    graphutils.put_in_map(
+        graphutils.GraphHelperKeys.TRAIN_OPS_MAP,
+        graphutils.GraphHelperKeys.TRAIN_OPS_DEFAULT_ITEM,
+        train_op)
+
+build_ops_01 = ModelBuildOps()
+build_ops_01.build_train_ops = build_sgd_train_ops
+# add different build ops like the following
+
+model_01 = Model.build(build_ops_01, name='Model01',
+                       description='Optimized with SGD')
+
+build_ops_02 = ModelBuildOps()
+build_ops_02.build_train_ops = build_adam_train_ops
+# add different build ops like the following
+
+model_02 = Model.build(build_ops_02, name='Model02',
+                       description='Optimized with Adam')
+```
+"""
 
 
 import tensorflow as tf
@@ -198,8 +256,15 @@ class Model(object):
     def build(build_ops, name=None, description=None):
         """Build a model instance.
 
+        The `Model.build` method is a factory method for the model.
+        The `build_ops` argument is an instance of the `ModelBuildOps`
+        class that collects all the operations to be invoked to build
+        a model. This method implement the proper plan to build the model,
+        invoking such operations in the right order.
+
         Arguments:
-          build_ops: a `ModelBuildOps` instance.
+          build_ops: a `ModelBuildOps` instance containing the actual
+            building operations to be invoked.
           name: a `str` representing the name for the model.
           description: a `str` representing a description of the model.
 
