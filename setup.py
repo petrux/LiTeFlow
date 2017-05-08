@@ -20,6 +20,6 @@ setup(name='liteflow',
           'protobuf==3.2.0',
           'pyparsing==2.2.0',
           'six==1.10.0',
-          'tensorflow==1.0.1',
+          'tensorflow==1.1.0',
       ],
       zip_safe=False)

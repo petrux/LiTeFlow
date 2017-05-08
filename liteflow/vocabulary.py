@@ -131,7 +131,7 @@ class InMemoryVocabulary(BaseVocabulary):
 
     def add(self, word):
         """Add a new word to the vocabulary.
-
+_UNK
         Arguments:
           word: a word to be added to the vocabulary.
 
@@ -150,4 +150,54 @@ class InMemoryVocabulary(BaseVocabulary):
         self._words.append(word)
         self._index[word] = index
         return index
-    
+
+
+class UNKVocabulary(BaseVocabulary):
+    """Add support for unknown words to your vocabulary.
+
+    The UNKVocabulary class is intended to provide you with the
+    capability of supporting unknown words in your encoding mapping
+    them to some predefined `unknown` token (default `<UNK>`). Such
+    class is intended to act as a decorator of some other instance
+    implementing the `BaseVocabulary` contract.
+
+    Example:
+    >>> print 'ciaone!;
+
+    Remarks:
+      the decorated instance (passed as the `vocabulary` argument to
+        the initializer) MUST contain the UNK symbol.
+    """
+
+    UNK = '<UNK>'
+
+    def __init__(self, vocabulary, UNK='<UNK>'):
+        self._unk = UNK or self.UNK
+        self._vocabulary = vocabulary
+
+    def contains(self, word):
+        return self._vocabulary.contains(word)
+
+    def index(self, word):
+        """Get the index value for the given word.
+
+        Arguments:
+          word: a word from the vocabulary.
+
+        Returns:
+          an `int` representing the index value of the
+            given word or the index value for the unknwon
+            token.
+        """
+        if word in self._vocabulary:
+            return self._vocabulary.index(word)
+        return self._vocabulary.index(self._unk)
+
+    def word(self, index):
+        return self._vocabulary.word(index)
+
+    def size(self):
+        return self._vocabulary.size()
+
+    def items(self):
+        return self._vocabulary.items()

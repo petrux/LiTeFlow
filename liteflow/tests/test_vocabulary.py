@@ -117,5 +117,25 @@ class InMemoryVocabularyTest(unittest.TestCase):
         self.assertEquals(1, vocab.size())
 
 
+class TestUNKVocabulary(unittest.TestCase):
+    """Test case for the `liteflow.vocabulary.UNKVocabulary` class."""
+
+    def test_unknown(self):
+        """Test the support for unknwon words."""
+        unk = vocabulary.UNKVocabulary.UNK
+        voc = vocabulary.InMemoryVocabulary()
+        voc.add(unk)
+        voc.add('A')
+        voc.add('B')
+        voc.add('C')
+        unkvoc = vocabulary.UNKVocabulary(voc)
+
+        word = 'X'
+        self.assertEquals(4, unkvoc.size())
+        self.assertFalse(word in unkvoc)
+        index = unkvoc.index(word)
+        self.assertEquals(unk, unkvoc.word(index))
+        self.assertEquals(index, unkvoc.index(unk))
+
 if __name__ == '__main__':
     unittest.main()
