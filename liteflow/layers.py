@@ -4,7 +4,8 @@ import abc
 
 import tensorflow as tf
 
-import liteflow.utils as utils
+from liteflow import ops
+from liteflow import utils
 
 
 class Layer(object):
@@ -330,3 +331,29 @@ class BahdanauAttention(Layer):
     def apply(self, query, *args, **kwargs):
         """Wrapper for the `self.__call__()` method."""
         return super(BahdanauAttention, self).__call__(query, *args, **kwargs)
+
+
+class PointingSoftmax(Layer):
+    """Implements a PointingSoftmax over a set of attention states."""
+
+    def __init__(self, attention, mask=None, scope='PointingSoftmax'):
+        super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
+        self._attention = attention
+        self._mask = mask
+        # TODO(petrux): check dimension of the mask w.r.t. attention states.
+
+    def _build(self, *args, **kwargs):
+        """This class is just a wrapper so no operation is actually performed."""
+        pass
+
+    def _call(self, query, *args, **kwargs):
+        activations = self._attention.apply(query, *args, **kwargs)
+        weights = ops.softmax(activations, self._mask)
+        weights = tf.expand_dims(weights, axis=2)
+        context = tf.reduce_sum(self._attention.states * weights, axis=1)
+        return (weights, context)
+
+    def apply(self, query, *args, **kwargs):
+        """Wrapper for the __call__() method."""
+        return super(PointingSoftmax, self).__call__(self, query, *args, **kwargs)
+    

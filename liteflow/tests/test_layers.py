@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 import mock
+import unittest
 
 import liteflow.layers as layers
 import liteflow.utils as utils
@@ -575,6 +576,55 @@ class BahdanauAttentionTest(tf.test.TestCase):
             self._assert_all_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
             self._assert_none_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
+
+
+class TestPointingSoftmax(tf.test/TestCase):
+    """Test case for the `liteflow.layers.PointingSoftmax` class."""
+
+    _SEED = 23
+
+    def setUp(self):
+        tf.reset_default_graph()
+        tf.set_random_seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)
+
+    @unittest.skip('WIP')
+    def test_base(self):
+        """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
+
+        query01 = None
+        query02 = None
+
+        states = None
+        mask = None
+
+        activations01 = None
+        activations02 = None
+
+        exp_weights01 = None
+        exp_context01 = None
+
+        exp_weights02 = None
+        exp_context02 = None
+
+        attention = mock.Mock()
+        attention.states = mock.PropertyMock(return_value=states)
+        attention.apply.side_effect = [activations01, activations02]
+
+        layer = layers.PointingSoftmax(attention, mask=mask)
+        weights01, context01 = layer(query01)
+        weights02, context02 = layer(query02)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_weights01, act_context01 = sess.run([weights01, context01])
+            act_weights02, act_context02 = sess.run([weights02, context02])
+
+        self.assertAllClose(act_weights01, exp_weights01)
+        self.assertAllClose(act_weights02, exp_weights02)
+
+        self.assertAllClose(act_context01, exp_context01)
+        self.assertAllClose(act_context02, exp_context02)
 
 
 if __name__ == '__main__':
