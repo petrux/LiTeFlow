@@ -349,8 +349,8 @@ class PointingSoftmax(Layer):
     def _call(self, query, *args, **kwargs):
         activations = self._attention.apply(query, *args, **kwargs)
         weights = ops.softmax(activations, self._mask)
-        weights = tf.expand_dims(weights, axis=2)
-        context = tf.reduce_sum(self._attention.states * weights, axis=1)
+        eweights = tf.expand_dims(weights, axis=2)
+        context = tf.reduce_sum(self._attention.states * eweights, axis=1)
         return (weights, context)
 
     def apply(self, query, *args, **kwargs):

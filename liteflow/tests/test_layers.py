@@ -4,10 +4,9 @@ import numpy as np
 import tensorflow as tf
 
 import mock
-import unittest
 
-import liteflow.layers as layers
-import liteflow.utils as utils
+from liteflow import layers
+from liteflow import utils
 
 
 class Layer(layers.Layer):
@@ -578,7 +577,7 @@ class BahdanauAttentionTest(tf.test.TestCase):
             self._assert_none_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
 
 
-class TestPointingSoftmax(tf.test/TestCase):
+class TestPointingSoftmax(tf.test.TestCase):
     """Test case for the `liteflow.layers.PointingSoftmax` class."""
 
     _SEED = 23
@@ -588,43 +587,39 @@ class TestPointingSoftmax(tf.test/TestCase):
         tf.set_random_seed(seed=self._SEED)
         np.random.seed(seed=self._SEED)
 
-    @unittest.skip('WIP')
     def test_base(self):
         """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
 
-        query01 = None
-        query02 = None
+        query = tf.constant([[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
 
-        states = None
-        mask = None
+        states_np = np.asarray(
+            [[[0.01, 0.01, 0.01], [0.02, 0.02, 0.02], [0.03, 0.03, 0.03], [0.04, 0.04, 0.04]],
+             [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [23.0, 23.0, 23.0], [23.0, 23.0, 23.0]]])
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
+        lengths = tf.constant([4, 2], dtype=tf.int32)
+        mask = tf.cast(tf.sequence_mask(lengths, tf.shape(states)[1]), tf.float32)
 
-        activations01 = None
-        activations02 = None
+        activations = tf.constant([[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
 
-        exp_weights01 = None
-        exp_context01 = None
-
-        exp_weights02 = None
-        exp_context02 = None
+        exp_weights = np.asarray([[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
+        exp_context = np.asarray([[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
 
         attention = mock.Mock()
-        attention.states = mock.PropertyMock(return_value=states)
-        attention.apply.side_effect = [activations01, activations02]
+        attention.states = states
+        attention.apply.side_effect = [activations]
 
         layer = layers.PointingSoftmax(attention, mask=mask)
-        weights01, context01 = layer(query01)
-        weights02, context02 = layer(query02)
+        weights, context = layer(query)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            act_weights01, act_context01 = sess.run([weights01, context01])
-            act_weights02, act_context02 = sess.run([weights02, context02])
+            feed_dict = {
+                states: states_np
+            }
+            act_weights, act_context = sess.run([weights, context], feed_dict=feed_dict)
 
-        self.assertAllClose(act_weights01, exp_weights01)
-        self.assertAllClose(act_weights02, exp_weights02)
-
-        self.assertAllClose(act_context01, exp_context01)
-        self.assertAllClose(act_context02, exp_context02)
+        self.assertAllClose(act_weights, exp_weights)
+        self.assertAllClose(act_context, exp_context)
 
 
 if __name__ == '__main__':
