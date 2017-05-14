@@ -344,7 +344,6 @@ class PointingSoftmax(Layer):
         # TODO(petrux): check that the injected `attentio` has not been already built.
 
     def _build(self, *args, **kwargs):
-        """This method is just a wrapper so no operation is actually performed."""
         self._attention.build()
 
     def _call(self, query, *args, **kwargs):
@@ -357,3 +356,59 @@ class PointingSoftmax(Layer):
     def apply(self, query, *args, **kwargs):
         """Wrapper for the __call__() method."""  # TODO(petrux): add actual documentation
         return super(PointingSoftmax, self).__call__(self, query, *args, **kwargs)
+
+
+class PointingSoftmaxOutput(Layer):
+    """Implements the output layer for a PointingSoftmax."""
+
+    _SWITCH_KERNEL_NAME = 'SwitchKernel'
+    _SWITCH_BIAS_NAME = 'SwitchBias'
+    _EMIT_KERNEL_NAME = 'EmitKernel'
+    _EMIT_BIAS_NAME = 'EmitBias'
+
+    def __init__(self, pointing, emission_size, feedback_size=None,
+                 decoder_out_size=None, attention_size=None,
+                 trainable=True, scope='PointingSoftmaxOutput'):
+        super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
+        self._pointing = pointing
+        self._emission_size = emission_size
+        self._feedback_size = feedback_size
+        self._decoder_out_size = decoder_out_size
+        self._attention_size = attention_size
+        # TODO(petrux): check dimensions.
+        # TODO(petrux): check that injected layers have not already been built.
+        self._switch_kernel = None
+        self._switch_bias = None
+        self._emit_kernel = None
+        self._emit_bias = None
+
+    def _build(self, *args, **kwargs):
+        self._pointing.build()
+        self._switch_kernel = tf.get_variable(
+            name=self._SWITCH_KERNEL_NAME,
+            shape=[self._decoder_out_size + self._attention_size, 1],
+            trainable=self.trainable)
+        self._switch_bias = tf.get_variable(
+            name=self._SWITCH_BIAS_NAME,
+            shape=[1],
+            trainable=self.trainable)
+        self._emit_bias = tf.get_variable(
+            name=self._EMIT_BIAS_NAME,
+            shape=[self._decoder_out_size],
+            trainable=self.trainable)
+        self._emit_kernel = tf.get_variable(
+            self._EMIT_KERNEL_NAME,
+            shape=[self._decoder_out_size, self._emission_size],
+            trainable=self.trainable)
+
+
+    def _call(self, decoder_out, pointing_scores, attention_context, *args, **kwargs):
+        """Wrapper for the __call__() method."""  # TODO(petrux): add actual documentation
+        switch_in = tf.concat([decoder_out, attention_context], axis=1)
+        switch = tf.nn.sigmoid(tf.matmul(self._switch_kernel, switch_in) + self._switch_bias)
+        emission = tf.nn.sigmoid(tf.matmul(self._emit_kernel, decoder_out) + self._emit_bias)
+        output = tf.concat([switch * emission, (1 - switch) * pointing_scores], axis=1)
+        feedback = ops.fit(output, self._feedback_size) if self._feedback_size else output
+        next_decoder_input = tf.concat([feedback, decoder_out, attention_context], axis=1)
+        next_pointing_scores, next_attention_context = self._pointing.apply(decoder_out)
+        return output, next_decoder_input, next_pointing_scores, next_attention_context
