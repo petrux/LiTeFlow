@@ -341,19 +341,19 @@ class PointingSoftmax(Layer):
         self._attention = attention
         self._mask = mask
         # TODO(petrux): check dimension of the mask w.r.t. attention states.
+        # TODO(petrux): check that the injected `attentio` has not been already built.
 
     def _build(self, *args, **kwargs):
-        """This class is just a wrapper so no operation is actually performed."""
-        pass
+        """This method is just a wrapper so no operation is actually performed."""
+        self._attention.build()
 
     def _call(self, query, *args, **kwargs):
         activations = self._attention.apply(query, *args, **kwargs)
         weights = ops.softmax(activations, self._mask)
         eweights = tf.expand_dims(weights, axis=2)
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
-        return (weights, context)
+        return weights, context
 
     def apply(self, query, *args, **kwargs):
-        """Wrapper for the __call__() method."""
+        """Wrapper for the __call__() method."""  # TODO(petrux): add actual documentation
         return super(PointingSoftmax, self).__call__(self, query, *args, **kwargs)
-    

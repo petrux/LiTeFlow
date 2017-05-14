@@ -606,10 +606,13 @@ class TestPointingSoftmax(tf.test.TestCase):
 
         attention = mock.Mock()
         attention.states = states
-        attention.apply.side_effect = [activations]
+        attention.apply.side_effect = [activations, activations]
 
         layer = layers.PointingSoftmax(attention, mask=mask)
         weights, context = layer(query)
+        _, _ = layer(query)
+        self.assertEqual(1, attention.build.call_count)
+        self.assertTrue(layer.built)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -620,6 +623,18 @@ class TestPointingSoftmax(tf.test.TestCase):
 
         self.assertAllClose(act_weights, exp_weights)
         self.assertAllClose(act_context, exp_context)
+
+    def test_build(self):
+        """Check that the build operation bounces on the injected attention."""
+
+        attention = mock.Mock()
+        layer = layers.PointingSoftmax(attention)
+        self.assertFalse(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
+        layer.build()
+        self.assertTrue(layer.built)
+        self.assertEqual(1, attention.build.call_count)
 
 
 if __name__ == '__main__':
