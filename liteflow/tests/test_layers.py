@@ -395,7 +395,7 @@ class LayerTest(tf.test.TestCase):
                 layer.build()
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(context.exception.message.startswith(
-                """Variable Scope/Variable does not exist, """ +\
+                """Variable Scope/Variable does not exist, """ +
                 """or was not created with tf.get_variable()"""))
 
     @mock.patch.object(Layer, '_call')
@@ -414,7 +414,7 @@ class LayerTest(tf.test.TestCase):
                 layer.apply(object())
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(context.exception.message.startswith(
-                """Variable Scope/Variable does not exist, """ +\
+                """Variable Scope/Variable does not exist, """ +
                 """or was not created with tf.get_variable()"""))
 
     @mock.patch.object(Layer, '_build')
@@ -540,17 +540,20 @@ class BahdanauAttentionTest(tf.test.TestCase):
                             [0.8, 0.8, 0.8],
                             [0.7, 0.7, 0.7],
                             [0.6, 0.6, 0.6]]])
-        queries = [np.asarray([[1, 1], [2, 2]]), np.asarray([[.5, .5], [4, 4]])]
+        queries = [np.asarray([[1, 1], [2, 2]]),
+                   np.asarray([[.5, .5], [4, 4]])]
         scores = [np.array([[0.0904, 0.1017, 0.1128, 0.1238, 0.1345],
                             [0.2417, 0.2339, 0.2259, 0.2176, 0.2090]]),
                   np.array([[0.0517, 0.0634, 0.0750, 0.0866, 0.0979],
                             [0.3201, 0.3157, 0.3111, 0.3063, 0.3012]])]
 
         tf.reset_default_graph()
-        self.assertEquals(0, len(self._get_names(tf.GraphKeys.TRAINABLE_VARIABLES)))
+        self.assertEquals(0, len(self._get_names(
+            tf.GraphKeys.TRAINABLE_VARIABLES)))
         init = tf.constant_initializer(0.1)
         with tf.variable_scope('Scope', initializer=init) as scope:
-            states_ = tf.placeholder(dtype=tf.float32, shape=[None, None, state_size], name='S')
+            states_ = tf.placeholder(dtype=tf.float32, shape=[
+                                     None, None, state_size], name='S')
             queries_ = [tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q01'),
                         tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q02')]
             attention = layers.BahdanauAttention(
@@ -590,19 +593,24 @@ class TestPointingSoftmax(tf.test.TestCase):
     def test_base(self):
         """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
 
-        query = tf.constant([[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
+        query = tf.constant(
+            [[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
 
         states_np = np.asarray(
             [[[0.01, 0.01, 0.01], [0.02, 0.02, 0.02], [0.03, 0.03, 0.03], [0.04, 0.04, 0.04]],
              [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [23.0, 23.0, 23.0], [23.0, 23.0, 23.0]]])
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
         lengths = tf.constant([4, 2], dtype=tf.int32)
-        mask = tf.cast(tf.sequence_mask(lengths, tf.shape(states)[1]), tf.float32)
+        mask = tf.cast(tf.sequence_mask(
+            lengths, tf.shape(states)[1]), tf.float32)
 
-        activations = tf.constant([[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
+        activations = tf.constant(
+            [[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
 
-        exp_weights = np.asarray([[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
-        exp_context = np.asarray([[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
+        exp_weights = np.asarray(
+            [[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
+        exp_context = np.asarray(
+            [[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
 
         attention = mock.Mock()
         attention.states = states
@@ -619,7 +627,8 @@ class TestPointingSoftmax(tf.test.TestCase):
             feed_dict = {
                 states: states_np
             }
-            act_weights, act_context = sess.run([weights, context], feed_dict=feed_dict)
+            act_weights, act_context = sess.run(
+                [weights, context], feed_dict=feed_dict)
 
         self.assertAllClose(act_weights, exp_weights)
         self.assertAllClose(act_context, exp_context)
@@ -635,6 +644,27 @@ class TestPointingSoftmax(tf.test.TestCase):
         layer.build()
         self.assertTrue(layer.built)
         self.assertEqual(1, attention.build.call_count)
+
+
+class TestPointingSoftmaxOutput(tf.test.TestCase):
+    """Test case for the PointingSoftmaxOutput layer."""
+
+    def test_build(self):
+        """Test that the  building phase goes upstream to the injected layer."""
+
+        pointing = mock.Mock()
+        layer = layers.PointingSoftmaxOutput(
+            pointing=pointing,
+            emission_size=10,
+            feedback_size=None,
+            decoder_out_size=7,
+            attention_size=4)
+        self.assertFalse(layer.built)
+        self.assertEqual(0, pointing.build.call_count)
+
+        layer.build()
+        self.assertTrue(layer.built)
+        self.assertEqual(1, pointing.build.call_count)
 
 
 if __name__ == '__main__':
