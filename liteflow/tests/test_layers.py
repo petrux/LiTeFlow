@@ -5,8 +5,8 @@ import tensorflow as tf
 
 import mock
 
-import liteflow.layers as layers
-import liteflow.utils as utils
+from liteflow import layers
+from liteflow import utils
 
 
 class Layer(layers.Layer):
@@ -575,6 +575,51 @@ class BahdanauAttentionTest(tf.test.TestCase):
             self._assert_all_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
         else:
             self._assert_none_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
+
+
+class TestPointingSoftmax(tf.test.TestCase):
+    """Test case for the `liteflow.layers.PointingSoftmax` class."""
+
+    _SEED = 23
+
+    def setUp(self):
+        tf.reset_default_graph()
+        tf.set_random_seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)
+
+    def test_base(self):
+        """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
+
+        query = tf.constant([[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
+
+        states_np = np.asarray(
+            [[[0.01, 0.01, 0.01], [0.02, 0.02, 0.02], [0.03, 0.03, 0.03], [0.04, 0.04, 0.04]],
+             [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [23.0, 23.0, 23.0], [23.0, 23.0, 23.0]]])
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
+        lengths = tf.constant([4, 2], dtype=tf.int32)
+        mask = tf.cast(tf.sequence_mask(lengths, tf.shape(states)[1]), tf.float32)
+
+        activations = tf.constant([[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
+
+        exp_weights = np.asarray([[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
+        exp_context = np.asarray([[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
+
+        attention = mock.Mock()
+        attention.states = states
+        attention.apply.side_effect = [activations]
+
+        layer = layers.PointingSoftmax(attention, mask=mask)
+        weights, context = layer(query)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            feed_dict = {
+                states: states_np
+            }
+            act_weights, act_context = sess.run([weights, context], feed_dict=feed_dict)
+
+        self.assertAllClose(act_weights, exp_weights)
+        self.assertAllClose(act_context, exp_context)
 
 
 if __name__ == '__main__':
