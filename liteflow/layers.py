@@ -1,5 +1,11 @@
 """Base contract for lite layers implementation."""
 
+#TODO(petrux): a STRONG refactoring is needed in the Layer superclass:
+#              1. the __call__(self, *args. **kwargs) method signature should avoid
+#                 any arguments other than *args, **kwargs
+#              2. a possible apply(...) method implementation should be leaved to subclasses
+#                 and should be documented instead of __call__
+
 import abc
 
 import tensorflow as tf
@@ -409,3 +415,66 @@ class PointingSoftmaxOutput(Layer):
     def apply(self, decoder_out, pointing_scores, attention_context, *args, **kwagrs):
         return super(PointingSoftmaxOutput, self).__call__(
             decoder_out, pointing_scores, attention_context, *args, **kwagrs)
+
+
+class PointingDecoder(Layer):
+    """PointingDecoder layer."""
+
+    def __init__(self, decoder_cell, sequence_length,
+                 pointing_softmax, pointing_softmax_output,
+                 feedback_init=None, feedback_size=None,
+                 cell_init_out=None, cell_init_state=None,
+                 parallel_iterations=None, swap_memory=False,
+                 trainable=True, scope='PointingDecoder'):
+        super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
+        self._decoder_cell = decoder_cell
+        self._sequence_length = sequence_length
+        self._pointing_softmax = pointing_softmax
+        self._pointing_softmax_output = pointing_softmax_output
+        self._feedback_init = feedback_init
+        self._feedback_size = feedback_size
+        self._cell_init_out = cell_init_out
+        self._cell_init_state = cell_init_state
+        self._parallel_iterations = parallel_iterations
+        self._swap_memory = swap_memory
+
+    def _build(self):
+        self._pointing_softmax.build()
+        self._pointing_softmax_output.build()
+        # DO ALL THE STUFF.
+
+    def _loop_fn(self, time, cell_output, cell_state, loop_state):
+        elements_finished = (time > self._sequence_length)
+        finished = tf.reduce_all(elements_finished)
+        pointing_softmax, attention_context = loop_state
+        next_cell_input = None
+        next_cell_state = None
+        emit_output = None
+        next_loop_state = (None, None)
+        feedback = None
+        if cell_output is None:
+            cell_output = self._cell_init_out
+            next_cell_state = self._cell_init_state
+            emit_output = self._feedback_init
+        else:
+            next_cell_state = cell_state
+            emit_output = tf.cond(
+                finished,
+                lambda: None,
+                lambda: self._pointing_softmax_output(
+                    cell_output, pointing_softmax, attention_context))
+        next_loop_state = tf.cond(
+            finished,
+            lambda: None,
+            lambda: self._pointing_softmax(cell_output))
+        next_cell_input = tf.concat([cell_output, attention_context, feedback], axis=1)
+        return elements_finished, next_cell_input, next_cell_state, emit_output, next_loop_state
+
+    def _call(self, *args, **kwargs):
+        outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
+        outputs = outputs_ta.pack()
+        return outputs
+
+    def apply(self, inp=None):  #TODO(petrux): this method should be 0-arity
+        """Run."""
+        return super(PointingDecoder, self).__call__(inp)
