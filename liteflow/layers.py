@@ -344,11 +344,12 @@ class PointingSoftmax(Layer):
     """Implements a PointingSoftmax over a set of attention states."""
 
     def __init__(self, attention, mask=None, scope='PointingSoftmax'):
+        if attention.built:
+            raise ValueError('`attention` layer has already been built.')
         super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
         self._mask = mask
         # TODO(petrux): check dimension of the mask w.r.t. attention states.
-        # TODO(petrux): check that the injected `attentio` has not been already built.
 
     def _build(self, *args, **kwargs):
         self._attention.build()
