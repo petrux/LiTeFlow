@@ -402,6 +402,35 @@ class PointingSoftmaxOutput(Layer):
             shape=[self._emission_size],
             trainable=self.trainable)
 
+    @property
+    def emission_size(self):
+        """The emission size."""
+        return self._emission_size
+
+    @property
+    def decoder_out_size(self):
+        """The decoder output size."""
+        return self._decoder_out_size
+
+    @property
+    def attention_size(self):
+        """The attention context vector size."""
+        return self._attention_size
+
+    def zero_output(self, batch_size, pointing_scores_size):
+        """Zero-state output of the layer.
+
+        Arguments:
+          batch_size: a `int` or unit Tensor representing the batch size.
+          pointing_scores_size: a `int` or unit Tensor representing the pointing scores size.
+
+        Returns:
+          a 2D tesor of size [batch_size, self.emission_size + pointing_scores_size]
+          of tf.float32 zeros, represernting the default first output tensor of the layer.
+        """
+        shape = tf.stack([batch_size, self._emission_size + pointing_scores_size])
+        return tf.zeros(shape, dtype=tf.float32)
+
     def _call(self, decoder_out, pointing_scores, attention_context, *args, **kwargs):
         """Wrapper for the __call__() method."""  
         # TODO(petrux): add actual documentation

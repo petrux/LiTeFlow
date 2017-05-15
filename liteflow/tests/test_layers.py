@@ -663,7 +663,8 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         self.assertTrue(layer.built)
 
     def test_base(self):
-        """Base test for the PointingSoftmaxOutput layer."""
+        """Base test for the PointingSoftmaxOutput layer.        self.assertEqual(, act_zero_output.shape)
+"""
         decoder_out_size = 3
         attention_size = 4
         emission_size = 7
@@ -703,6 +704,29 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             act_output = sess.run(output)
         self.assertAllClose(exp_output, act_output)
+
+    def test_zero_output(self):
+        """Tests the zero-output."""
+        decoder_out_size = 3
+        attention_size = 4
+        emission_size = 7
+        batch_size = 2
+        pointing_size = 10
+        state_size = 5
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        batch_size_tensor = tf.shape(states)[0]
+        pointing_size_tensor = tf.shape(states)[1]
+        layer = layers.PointingSoftmaxOutput(emission_size, decoder_out_size, attention_size)
+        zero_output = layer.zero_output(batch_size_tensor, pointing_size_tensor)
+
+        data = np.ones((batch_size, pointing_size, state_size))
+        exp_shape = (batch_size, emission_size + pointing_size)
+        exp_zero_output = np.zeros(exp_shape)
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_zero_output = sess.run(zero_output, {states: data})
+        self.assertAllEqual(exp_zero_output, act_zero_output)
+
 
 if __name__ == '__main__':
     tf.test.main()
