@@ -260,7 +260,6 @@ class BahdanauAttention(Layer):
 
         # check that the last dimension of the `states`
         # variable is fully defined.
-                InvalidArgumentError
         state_size = states.get_shape()[-1].value
         if state_size is None:
             raise ValueError('Last dimension of `states` must be defined, found %s'
