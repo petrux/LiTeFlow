@@ -496,6 +496,9 @@ class BahdanauAttentionTest(tf.test.TestCase):
         collection = tf.get_collection(key)
         names = [var.op.name for var in collection]
         return set(sorted(names))
+        for var in tf.global_variables():
+            print(var.op.name)
+
 
     def _assert_all_in(self, variables, key):
         ref = self._get_names(key)
@@ -550,10 +553,12 @@ class BahdanauAttentionTest(tf.test.TestCase):
         tf.reset_default_graph()
         self.assertEquals(0, len(self._get_names(
             tf.GraphKeys.TRAINABLE_VARIABLES)))
-        init = tf.constant_initializer(0.1)
-        with tf.variable_scope('Scope', initializer=init) as scope:
-            states_ = tf.placeholder(dtype=tf.float32, shape=[
-                                     None, None, state_size], name='S')
+        initializer = tf.constant_initializer(0.1)
+        with tf.variable_scope('Scope', initializer=initializer) as scope:
+            states_ = tf.placeholder(
+                dtype=tf.float32,
+                shape=[None, None, state_size],
+                name='S')
             queries_ = [tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q01'),
                         tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q02')]
             attention = layers.BahdanauAttention(
@@ -652,20 +657,55 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
     def test_build(self):
         """Test that the  building phase goes upstream to the injected layer."""
 
-        pointing = mock.Mock()
         layer = layers.PointingSoftmaxOutput(
-            pointing=pointing,
             emission_size=10,
-            feedback_size=None,
             decoder_out_size=7,
             attention_size=4)
         self.assertFalse(layer.built)
-        self.assertEqual(0, pointing.build.call_count)
-
         layer.build()
         self.assertTrue(layer.built)
-        self.assertEqual(1, pointing.build.call_count)
 
+    def test_base(self):
+        """Base test for the PointingSoftmaxOutput layer."""
+        decoder_out_size = 3
+        attention_size = 4
+        emission_size = 7
+
+        decoder_out = tf.constant(
+            [[1, 1, 1], [2, 2, 2]],
+            dtype=tf.float32)
+        pointing_scores = tf.constant(
+            [[0.1, 0.1, 0.1, 0.2, 0.5],
+             [0.2, 0.1, 0.5, 0.1, 0.1]],
+            dtype=tf.float32)
+        attention_context = tf.constant(
+            [[3, 3, 3, 3], [4, 4, 4, 4]],
+            dtype=tf.float32)
+        initializer = tf.constant_initializer(value=0.1)
+
+        with tf.variable_scope('', initializer=initializer):
+            layer = layers.PointingSoftmaxOutput(
+                emission_size=emission_size,
+                decoder_out_size=decoder_out_size,
+                attention_size=attention_size)
+            output = layer.apply(
+                decoder_out=decoder_out,
+                pointing_scores=pointing_scores,
+                attention_context=attention_context)
+
+        exp_output = np.asarray(
+            [[0.49811914, 0.49811914, 0.49811914, 0.49811914, 0.49811914,
+              0.49811914, 0.49811914, 0.01679816, 0.01679816, 0.01679816,
+              0.03359632, 0.08399081],
+             [0.60730052, 0.60730052, 0.60730052, 0.60730052, 0.60730052,
+              0.60730052, 0.60730052, 0.01822459, 0.00911230, 0.04556148,
+              0.00911230, 0.0091123]],
+            dtype=np.float32)  # pylint: disable=I0011,E1101
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_output = sess.run(output)
+        self.assertAllClose(exp_output, act_output)
 
 if __name__ == '__main__':
     tf.test.main()
