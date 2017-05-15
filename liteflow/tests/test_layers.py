@@ -496,9 +496,6 @@ class BahdanauAttentionTest(tf.test.TestCase):
         collection = tf.get_collection(key)
         names = [var.op.name for var in collection]
         return set(sorted(names))
-        for var in tf.global_variables():
-            print(var.op.name)
-
 
     def _assert_all_in(self, variables, key):
         ref = self._get_names(key)
@@ -606,8 +603,6 @@ class TestPointingSoftmax(tf.test.TestCase):
              [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [23.0, 23.0, 23.0], [23.0, 23.0, 23.0]]])
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
         lengths = tf.constant([4, 2], dtype=tf.int32)
-        mask = tf.cast(tf.sequence_mask(
-            lengths, tf.shape(states)[1]), tf.float32)
 
         activations = tf.constant(
             [[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
@@ -622,7 +617,7 @@ class TestPointingSoftmax(tf.test.TestCase):
         attention.built = False
         attention.apply.side_effect = [activations, activations]
 
-        layer = layers.PointingSoftmax(attention, mask=mask)
+        layer = layers.PointingSoftmax(attention, lengths)
         weights, context = layer(query)
         _, _ = layer(query)
         self.assertEqual(1, attention.build.call_count)

@@ -151,9 +151,7 @@ class Layer(object):
           **kwargs: keyword arguments to be passed to `self._build()`.
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
-        Raises:        print 'TRAINABLE: ' + str(self._trainable)
-
-
+        Raises: 
           RuntimeError: if the layer has already been built, i.e. if `self.built`
             is equals to `True`.
 
@@ -322,7 +320,7 @@ class BahdanauAttention(Layer):
           query: a 2-D Tensor of shape [batch, query]; the last dimension must
             be statically determined.
           *args: additional positional arguments to be passed to `self._call()`.
-          **kwargs: additional keyword arguments to be passed to `self._call()`.
+          **kwargs: additional keyword arguments
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
         Returns:
@@ -343,20 +341,21 @@ class BahdanauAttention(Layer):
 class PointingSoftmax(Layer):
     """Implements a PointingSoftmax over a set of attention states."""
 
-    def __init__(self, attention, mask=None, scope='PointingSoftmax'):
+    def __init__(self, attention, sequence_length=None, scope='PointingSoftmax'):
         if attention.built:
             raise ValueError('`attention` layer has already been built.')
         super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
-        self._mask = mask
-        # TODO(petrux): check dimension of the mask w.r.t. attention states.
+        self._sequence_length = sequence_length
 
     def _build(self, *args, **kwargs):
         self._attention.build()
 
     def _call(self, query, *args, **kwargs):
         activations = self._attention.apply(query, *args, **kwargs)
-        weights = ops.softmax(activations, self._mask)
+        maxlen = utils.get_dimension(activations, -1)
+        mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
+        weights = ops.softmax(activations, mask)
         eweights = tf.expand_dims(weights, axis=2)
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
         return weights, context
@@ -374,14 +373,12 @@ class PointingSoftmaxOutput(Layer):
     _EMIT_KERNEL_NAME = 'EmitKernel'
     _EMIT_BIAS_NAME = 'EmitBias'
 
-    def __init__(self, emission_size, decoder_out_size=None, attention_size=None,
+    def __init__(self, emission_size, decoder_out_size, attention_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
         super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
         self._emission_size = emission_size
         self._decoder_out_size = decoder_out_size
         self._attention_size = attention_size
-        # TODO(petrux): check dimensions.
-        # TODO(petrux): check that injected layers have not already been built.
         self._switch_kernel = None
         self._switch_bias = None
         self._emit_kernel = None
