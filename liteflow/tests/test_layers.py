@@ -663,8 +663,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         self.assertTrue(layer.built)
 
     def test_base(self):
-        """Base test for the PointingSoftmaxOutput layer.        self.assertEqual(, act_zero_output.shape)
-"""
+        """Base test for the PointingSoftmaxOutput layer."""
         decoder_out_size = 3
         attention_size = 4
         emission_size = 7
@@ -727,6 +726,61 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
             act_zero_output = sess.run(zero_output, {states: data})
         self.assertAllEqual(exp_zero_output, act_zero_output)
 
+
+class TestPointingDecoder(tf.test.TestCase):
+    """Test case for the PointingDecoder class."""
+
+    def test_build_and_init(self):
+        """Test the .build moethod and the default init tensors."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        zero_output = tf.zeros(tf.stack([
+            utils.get_dimension(states, 0),
+            emit_size + utils.get_dimension(states, 1)]))
+        cell_zero_state = tf.zeros(tf.stack([utils.get_dimension(states, 0), cell_state_size]))
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_zero_state]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [zero_output]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+
+        self.assertIsNone(layer.emit_out_init)
+        self.assertIsNone(layer.cell_out_init)
+        self.assertIsNone(layer.cell_state_init)
+
+        layer.build()
+        self.assertIsNotNone(layer.emit_out_init)
+        self.assertIsNotNone(layer.cell_out_init)
+        self.assertIsNotNone(layer.cell_state_init)
+
+        data = np.ones((batch_size, timesteps, state_size))
+        exp_output_init = np.zeros((batch_size, emit_size + timesteps))
+        exp_cell_out_init = np.zeros((batch_size, cell_output_size))
+        exp_cell_state_init = np.zeros((batch_size, cell_state_size))
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_output_init = sess.run(layer.emit_out_init, {states: data})
+            act_cell_out_init = sess.run(layer.cell_out_init, {states: data})
+            act_cell_state_init = sess.run(layer.cell_state_init, {states: data})
+
+        self.assertAllClose(act_output_init, exp_output_init)
+        self.assertAllClose(act_cell_out_init, exp_cell_out_init)
+        self.assertAllClose(act_cell_state_init, exp_cell_state_init)
 
 if __name__ == '__main__':
     tf.test.main()
