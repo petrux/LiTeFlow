@@ -40,15 +40,13 @@ class TestGetDimension(unittest.TestCase):
         tensor = tf.placeholder(dtype=tf.float32, shape=[9, 23])
         self.assertRaises(TypeError, utils.get_dimension, tensor, None)
 
-    def test_dimension_lt_zero(self):
-        """A dimension index less than zero raises a ValueError."""
-        tensor = tf.placeholder(dtype=tf.float32)
-        self.assertRaises(ValueError, utils.get_dimension, tensor, -1)
-
-    def test_dimension_ge_rank(self):
-        """A dimension index greater or equal than the rank raises a ValueError."""
+    def test_dimension_out_of_bound(self):
+        """A dimension index outside the tensor rank raises a IndexError."""
         tensor = tf.placeholder(dtype=tf.float32, shape=[9, 23])
-        self.assertRaises(ValueError, utils.get_dimension, tensor, 2)
+        self.assertRaises(IndexError, utils.get_dimension, tensor, 2)
+        for i in range(-len(tensor.shape), len(tensor.shape)-1):
+            self.assertIsNotNone(utils.get_dimension(tensor, i))
+        self.assertRaises(IndexError, utils.get_dimension, tensor, -3)
 
     def test_unspecified_shape(self):
         """Test with unspecified tensor shape."""

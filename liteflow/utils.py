@@ -108,8 +108,8 @@ def get_dimension(tensor, dim, ensure_tensor=False):
 
     Raises:
       TypeError: if `tensor` or `dim` are None.
-      ValueError: if `dim` is less than 0 or greater or equal than the rank
-        (i.e. the number of dimensions) of `tensor`, if specified.
+      IndexError: if `dim` not compatible with the rank (i.e. the number
+        of dimensions) of `tensor`, if specified.
 
     Example:
     ```
@@ -122,12 +122,6 @@ def get_dimension(tensor, dim, ensure_tensor=False):
         raise TypeError('`tensor` cannot be of `None` type.')
     if dim is None:
         raise TypeError('`dim` cannot be of `None` type.')
-
-    rank = tensor.shape.ndims
-    if dim < 0 or rank and dim >= rank:
-        raise ValueError(
-            """`dim` value must be greater or equal than"""
-            """0 and less than rank of `tensor`""")
 
     dimension = tensor.shape[dim]
     if dimension.value is None:
