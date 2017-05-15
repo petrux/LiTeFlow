@@ -124,7 +124,7 @@ class Layer(object):
                 self._scope = utils.as_scope(scope)
             return
         if scope is not None:
-            tf.logging.warn(
+            tf.logging.warning(
                 """Trying to set the scope %s while"""
                 """ %s has already been set.""",
                 utils.as_scope(scope).name, self._scope.name)
@@ -161,6 +161,7 @@ class Layer(object):
         1. setup the scope (if not set yet);
         2. within the scope context, invoke the `self._build()` template method;
         3. set the `self.built` property to `True`.
+                InvalidArgumentError
         When subclassing the `Layer` class, you shall provide an implementation of
         the `Layer._build()` method so that all the other boilerplate stuff (namely
         item 1. and 3. from the above list) are performed by the `Layer.build()`
@@ -259,6 +260,7 @@ class BahdanauAttention(Layer):
 
         # check that the last dimension of the `states`
         # variable is fully defined.
+                InvalidArgumentError
         state_size = states.get_shape()[-1].value
         if state_size is None:
             raise ValueError('Last dimension of `states` must be defined, found %s'
