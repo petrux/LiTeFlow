@@ -390,13 +390,12 @@ class PointingSoftmaxOutput(Layer):
     _EMIT_KERNEL_NAME = 'EmitKernel'
     _EMIT_BIAS_NAME = 'EmitBias'
 
-    # TODO(petrux): attention_size NONSENSE!!!
-    def __init__(self, emission_size, decoder_out_size, attention_size,
+    def __init__(self, emission_size, decoder_out_size, state_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
         super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
         self._emission_size = emission_size
         self._decoder_out_size = decoder_out_size
-        self._attention_size = attention_size
+        self._state_size = state_size
         self._switch_kernel = None
         self._switch_bias = None
         self._emit_kernel = None
@@ -405,7 +404,7 @@ class PointingSoftmaxOutput(Layer):
     def _build(self, *args, **kwargs):
         self._switch_kernel = tf.get_variable(
             name=self._SWITCH_KERNEL_NAME,
-            shape=[self._decoder_out_size + self._attention_size, 1],
+            shape=[self._decoder_out_size + self._state_size, 1],
             trainable=self.trainable)
         self._switch_bias = tf.get_variable(
             name=self._SWITCH_BIAS_NAME,
@@ -431,9 +430,9 @@ class PointingSoftmaxOutput(Layer):
         return self._decoder_out_size
 
     @property
-    def attention_size(self):
+    def state_size(self):
         """The attention context vector size."""
-        return self._attention_size
+        return self._state_size
 
     def zero_output(self, batch_size, pointing_size):
         """Zero-state output of the layer.
@@ -480,6 +479,7 @@ class PointingDecoder(Layer):
 
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
+    # TODO(petrux): deal with no sequence length set.
     def __init__(self, decoder_cell, sequence_length,
                  pointing_softmax, pointing_softmax_output,
                  emit_out_init=None, feedback_size=None,
@@ -539,10 +539,7 @@ class PointingDecoder(Layer):
 
         # Determin how many sequences are actually over and define
         # a flag to check if all of them have been fully scanned.
-        #
-        # TODO(petrux): deal with no sequence length set.
         elements_finished = (time >= self._sequence_length)
-        # finished = tf.reduce_all(elements_finished)
 
         # Unpack the loop state: it must contain two 2D tensors
         # representing the pointing softmax and the attention context
@@ -570,10 +567,6 @@ class PointingDecoder(Layer):
 
         # Evaluate the pointing scores and the attention context for
         # the next step and pack them into the loop state.
-        # pointing_softmax, attention_context = tf.cond(
-        #     finished,
-        #     lambda: (None, None),
-        #     lambda: self._pointing_softmax(cell_output))
         pointing_softmax, attention_context = self._pointing_softmax(cell_output)
         next_loop_state = (pointing_softmax, attention_context)
 
@@ -588,7 +581,7 @@ class PointingDecoder(Layer):
         # Pack the next input for the decoder cell. Such input is
         # the concatenation of the current cell output (since it is
         # a recurrent scenario), the current attention_context and
-        # the feedbakc coming from the output signal.
+        # the feedback coming from the output signal.
         next_cell_input = tf.concat(
             [cell_output, attention_context, feedback],
             axis=1)
