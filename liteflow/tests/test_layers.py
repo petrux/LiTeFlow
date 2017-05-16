@@ -8,6 +8,9 @@ import mock
 from liteflow import layers
 from liteflow import utils
 
+# Disable pylint warning about too many statements
+# and local variables since we are dealing with tests.
+# pylint: disable=R0914, R0915
 
 class Layer(layers.Layer):
     """Dummy `layers.Layer` implementation."""
@@ -35,7 +38,7 @@ class ScopeTracker(object):
 
     def latest(self):
         """Returns the latest tracked scope (or None)."""
-        if len(self._scopes) == 0:
+        if not self._scopes:
             return None
         return self._scopes[-1]
 
@@ -490,9 +493,9 @@ class BahdanauAttentionTest(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(seed=self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    def _get_names(self, key):
+    def _get_names(self, key):  # pylint: disable=I0011,R0201
         collection = tf.get_collection(key)
         names = [var.op.name for var in collection]
         return set(sorted(names))
@@ -590,7 +593,7 @@ class TestPointingSoftmax(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(seed=self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
     def test_base(self):
         """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
@@ -735,7 +738,7 @@ class TestPointingDecoder(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
     def test_build_and_init(self):
         """Test the .build moethod and the default init tensors."""

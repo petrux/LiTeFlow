@@ -517,6 +517,7 @@ class PointingDecoder(Layer):
 
         # Determin how many sequences are actually over and define
         # a flag to check if all of them have been fully scanned.
+        #
         # TODO(petrux): deal with no sequence length set.
         elements_finished = (time >= self._pointing_softmax.sequence_length)
         # finished = tf.reduce_all(elements_finished)
