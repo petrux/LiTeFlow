@@ -22,7 +22,7 @@ class Layer(layers.Layer):
     def _build(self, *args, **kwargs):
         return None
 
-    def _call(self, inp, *args, **kwargs):  # pylint: disable=I0011,W0221
+    def _call(self, _, *args, **kwargs):  # pylint: disable=I0011,W0221
         return None
 
 
@@ -807,10 +807,9 @@ class TestPointingDecoder(tf.test.TestCase):
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
         sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
 
-        # TODO(petrux): zero_output must become output_init with random values.
         batch_dim = utils.get_dimension(states, 0)
         timesteps_dim = utils.get_dimension(states, 1)
-        zero_output = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        output_init = tf.random_normal(tf.stack([batch_dim, emit_size + timesteps_dim]))
         cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
         time = tf.constant(0, dtype=tf.int32)
 
@@ -827,7 +826,7 @@ class TestPointingDecoder(tf.test.TestCase):
         pointing_softmax.side_effect = [(pointing_scores, attention_context)]
 
         pointing_softmax_output = mock.Mock()
-        pointing_softmax_output.zero_output.side_effect = [zero_output]
+        pointing_softmax_output.zero_output.side_effect = [output_init]
 
         layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
         layer.build()
@@ -841,7 +840,7 @@ class TestPointingDecoder(tf.test.TestCase):
 
         # Assertion of programatically returned tensors.
         self.assertEqual(next_cell_state, cell_zero_state)
-        self.assertEqual(emit_output, zero_output)
+        self.assertEqual(emit_output, output_init)
         self.assertEqual(next_pointing_scores, pointing_scores)
         self.assertEqual(next_attention_context, attention_context)
 
@@ -854,7 +853,7 @@ class TestPointingDecoder(tf.test.TestCase):
                    next_cell_input,
                    layer.cell_out_init,
                    attention_context,
-                   zero_output]
+                   output_init]
         feed_dict = {
             states: data,
             sequence_length: lengths}
