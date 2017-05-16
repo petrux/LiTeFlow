@@ -651,6 +651,19 @@ class TestPointingSoftmax(tf.test.TestCase):
         self.assertTrue(layer.built)
         self.assertEqual(1, attention.build.call_count)
 
+    def test_build_with_built_attention(self):
+        """Check that the build operation bounces on the injected attention."""
+
+        attention = mock.Mock()
+        attention.built = True
+        layer = layers.PointingSoftmax(attention)
+        self.assertFalse(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
+        layer.build()
+        self.assertTrue(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
 
 class TestPointingSoftmaxOutput(tf.test.TestCase):
     """Test case for the PointingSoftmaxOutput layer."""

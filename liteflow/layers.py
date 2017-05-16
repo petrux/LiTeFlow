@@ -1,8 +1,5 @@
 """Base contract for lite layers implementation."""
 
-# TODO(petrux): refactoring on .build(): check if injected layers have been built
-#               and if not invoke the same method upstream. But no check should be
-#               done in the __init__() of the downstream layer.
 import abc
 
 import tensorflow as tf
@@ -343,8 +340,6 @@ class PointingSoftmax(Layer):
     """Implements a PointingSoftmax over a set of attention states."""
 
     def __init__(self, attention, sequence_length=None, scope='PointingSoftmax'):
-        if attention.built:
-            raise ValueError('`attention` layer has already been built.')
         super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
         self._sequence_length = sequence_length
@@ -360,7 +355,8 @@ class PointingSoftmax(Layer):
         return self._sequence_length
 
     def _build(self, *args, **kwargs):
-        self._attention.build()
+        if not self._attention.built:
+            self._attention.build()
 
     def _call(self, query):  # pylint: disable=I0011,W0221
         activations = self._attention.apply(query)
@@ -482,7 +478,6 @@ class PointingSoftmaxOutput(Layer):
 class PointingDecoder(Layer):
     """PointingDecoder layer."""
 
-    # TODO(petrux): check that injected members have not been built.
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
     # TODO(petrux): BUG the sequence length is not the input length.
@@ -521,8 +516,10 @@ class PointingDecoder(Layer):
         return self._cell_state_init
 
     def _build(self, *args, **kwargs):
-        self._pointing_softmax.build()
-        self._pointing_softmax_output.build()
+        if not self._pointing_softmax.built:
+            self._pointing_softmax.build()
+        if not self._pointing_softmax_output.built:
+            self._pointing_softmax_output.build()
 
         states = self._pointing_softmax.attention.states
         self._batch_size = utils.get_dimension(states, 0)
