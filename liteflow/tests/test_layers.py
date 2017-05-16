@@ -8,6 +8,10 @@ import mock
 from liteflow import layers
 from liteflow import utils
 
+# Disable pylint warning about too many statements
+# and local variables since we are dealing with tests.
+# pylint: disable=R0914, R0915
+
 
 class Layer(layers.Layer):
     """Dummy `layers.Layer` implementation."""
@@ -18,7 +22,7 @@ class Layer(layers.Layer):
     def _build(self, *args, **kwargs):
         return None
 
-    def _call(self, inp, *args, **kwargs):
+    def _call(self, _, *args, **kwargs):  # pylint: disable=I0011,W0221
         return None
 
 
@@ -35,7 +39,7 @@ class ScopeTracker(object):
 
     def latest(self):
         """Returns the latest tracked scope (or None)."""
-        if len(self._scopes) == 0:
+        if not self._scopes:
             return None
         return self._scopes[-1]
 
@@ -120,7 +124,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -130,7 +134,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -180,7 +184,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, utils.as_scope(scope).name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -190,7 +194,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -227,7 +231,7 @@ class LayerTest(tf.test.TestCase):
         _call.assert_not_called()
 
         inp = object()
-        out = layer.apply(inp, scope=scope)
+        out = layer.call(inp, scope=scope)
         self.assertIsNotNone(layer.scope)
         self.assertEqual(utils.as_scope(scope).name, layer.scope.name)
         self.assertEqual(inp, out)
@@ -284,7 +288,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -294,7 +298,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -317,7 +321,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer(scope=scope)
             layer.build()
             for arg in args:
-                layer.apply(arg)
+                layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_init_scope)
 
@@ -325,7 +329,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer()
             layer.build(scope=scope)
             for arg in args:
-                layer.apply(arg)
+                layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_build_scope)
 
@@ -333,9 +337,9 @@ class LayerTest(tf.test.TestCase):
             layer = Layer()
             for i, arg in enumerate(args):
                 if i == 0:
-                    layer.apply(arg, scope=scope)
+                    layer.call(arg, scope=scope)
                 else:
-                    layer.apply(arg)
+                    layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_apply_scope)
 
@@ -411,7 +415,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer(scope=scope)
             layer.build()
             with self.assertRaises(ValueError) as context:
-                layer.apply(object())
+                layer.call(object())
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(str(context.exception).startswith(
                 """Variable Scope/Variable does not exist, """ +
@@ -446,7 +450,7 @@ class LayerTest(tf.test.TestCase):
             _do_call()
             layer = Layer(scope=scope)
             with self.assertRaises(ValueError) as context:
-                layer.apply(object())
+                layer.call(object())
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(str(context.exception).startswith(
                 'Variable Scope/Variable already exists'))
@@ -490,9 +494,9 @@ class BahdanauAttentionTest(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(seed=self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    def _get_names(self, key):
+    def _get_names(self, key):  # pylint: disable=I0011,R0201
         collection = tf.get_collection(key)
         names = [var.op.name for var in collection]
         return set(sorted(names))
@@ -590,7 +594,7 @@ class TestPointingSoftmax(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(seed=self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
     def test_base(self):
         """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
@@ -647,6 +651,19 @@ class TestPointingSoftmax(tf.test.TestCase):
         self.assertTrue(layer.built)
         self.assertEqual(1, attention.build.call_count)
 
+    def test_build_with_built_attention(self):
+        """Check that the build operation bounces on the injected attention."""
+
+        attention = mock.Mock()
+        attention.built = True
+        layer = layers.PointingSoftmax(attention)
+        self.assertFalse(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
+        layer.build()
+        self.assertTrue(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
 
 class TestPointingSoftmaxOutput(tf.test.TestCase):
     """Test case for the PointingSoftmaxOutput layer."""
@@ -657,7 +674,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         layer = layers.PointingSoftmaxOutput(
             emission_size=10,
             decoder_out_size=7,
-            attention_size=4)
+            state_size=4)
         self.assertFalse(layer.built)
         layer.build()
         self.assertTrue(layer.built)
@@ -665,7 +682,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
     def test_base(self):
         """Base test for the PointingSoftmaxOutput layer."""
         decoder_out_size = 3
-        attention_size = 4
+        state_size = 4
         emission_size = 7
 
         decoder_out = tf.constant(
@@ -684,8 +701,8 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
             layer = layers.PointingSoftmaxOutput(
                 emission_size=emission_size,
                 decoder_out_size=decoder_out_size,
-                attention_size=attention_size)
-            output = layer.apply(
+                state_size=state_size)
+            output = layer.call(
                 decoder_out=decoder_out,
                 pointing_scores=pointing_scores,
                 attention_context=attention_context)
@@ -707,7 +724,6 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
     def test_zero_output(self):
         """Tests the zero-output."""
         decoder_out_size = 3
-        attention_size = 4
         emission_size = 7
         batch_size = 2
         pointing_size = 10
@@ -715,7 +731,10 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
         batch_size_tensor = tf.shape(states)[0]
         pointing_size_tensor = tf.shape(states)[1]
-        layer = layers.PointingSoftmaxOutput(emission_size, decoder_out_size, attention_size)
+        layer = layers.PointingSoftmaxOutput(
+            emission_size=emission_size,
+            decoder_out_size=decoder_out_size,
+            state_size=state_size)
         zero_output = layer.zero_output(batch_size_tensor, pointing_size_tensor)
 
         data = np.ones((batch_size, pointing_size, state_size))
@@ -735,7 +754,7 @@ class TestPointingDecoder(tf.test.TestCase):
     def setUp(self):
         tf.reset_default_graph()
         tf.set_random_seed(self._SEED)
-        np.random.seed(seed=self._SEED)
+        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
     def test_build_and_init(self):
         """Test the .build moethod and the default init tensors."""
@@ -752,6 +771,7 @@ class TestPointingDecoder(tf.test.TestCase):
             utils.get_dimension(states, 0),
             emit_size + utils.get_dimension(states, 1)]))
         cell_zero_state = tf.zeros(tf.stack([utils.get_dimension(states, 0), cell_state_size]))
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
 
         decoder_cell = mock.Mock()
         decoder_cell.output_size = cell_output_size
@@ -763,7 +783,11 @@ class TestPointingDecoder(tf.test.TestCase):
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [zero_output]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
 
         self.assertIsNone(layer.emit_out_init)
         self.assertIsNone(layer.cell_out_init)
@@ -798,20 +822,18 @@ class TestPointingDecoder(tf.test.TestCase):
         state_size = 4
         cell_output_size = 5
         cell_state_size = 2 * cell_output_size
-        attention_size = 7
 
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
         sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
 
-        # TODO(petrux): zero_output must become output_init with random values.
         batch_dim = utils.get_dimension(states, 0)
         timesteps_dim = utils.get_dimension(states, 1)
-        zero_output = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        output_init = tf.random_normal(tf.stack([batch_dim, emit_size + timesteps_dim]))
         cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
         time = tf.constant(0, dtype=tf.int32)
 
         pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
-        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        attention_context = tf.random_normal(shape=[batch_dim, state_size])
 
         decoder_cell = mock.Mock()
         decoder_cell.output_size = cell_output_size
@@ -819,13 +841,16 @@ class TestPointingDecoder(tf.test.TestCase):
 
         pointing_softmax = mock.Mock()
         pointing_softmax.attention.states = states
-        pointing_softmax.sequence_length = sequence_length
         pointing_softmax.side_effect = [(pointing_scores, attention_context)]
 
         pointing_softmax_output = mock.Mock()
-        pointing_softmax_output.zero_output.side_effect = [zero_output]
+        pointing_softmax_output.zero_output.side_effect = [output_init]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
         layer.build()
 
         results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
@@ -837,7 +862,7 @@ class TestPointingDecoder(tf.test.TestCase):
 
         # Assertion of programatically returned tensors.
         self.assertEqual(next_cell_state, cell_zero_state)
-        self.assertEqual(emit_output, zero_output)
+        self.assertEqual(emit_output, output_init)
         self.assertEqual(next_pointing_scores, pointing_scores)
         self.assertEqual(next_attention_context, attention_context)
 
@@ -850,7 +875,7 @@ class TestPointingDecoder(tf.test.TestCase):
                    next_cell_input,
                    layer.cell_out_init,
                    attention_context,
-                   zero_output]
+                   output_init]
         feed_dict = {
             states: data,
             sequence_length: lengths}
@@ -877,7 +902,6 @@ class TestPointingDecoder(tf.test.TestCase):
         state_size = 4
         cell_output_size = 5
         cell_state_size = 2 * cell_output_size
-        attention_size = 7
         current_time = 5
         lengths = [3, 10]
 
@@ -896,13 +920,13 @@ class TestPointingDecoder(tf.test.TestCase):
         cell_output = tf.random_normal(shape=tf.stack([batch_dim, cell_output_size]))
         cell_state = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
         pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
-        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        attention_context = tf.random_normal(shape=[batch_dim, state_size])
         loop_state = (pointing_scores, attention_context)
 
         # output/next step tensors.
         emit_out = tf.ones(tf.stack([batch_dim, emit_size + timesteps_dim]))
         next_pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
-        next_attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        next_attention_context = tf.random_normal(shape=[batch_dim, state_size])
         next_loop_state = (next_pointing_scores, next_attention_context)
 
         decoder_cell = mock.Mock()
@@ -911,14 +935,17 @@ class TestPointingDecoder(tf.test.TestCase):
 
         pointing_softmax = mock.Mock()
         pointing_softmax.attention.states = states
-        pointing_softmax.sequence_length = sequence_length
         pointing_softmax.side_effect = [next_loop_state]
 
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [emit_out_init]
         pointing_softmax_output.side_effect = [emit_out]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
         layer.build()
 
         results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
