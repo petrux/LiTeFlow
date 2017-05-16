@@ -108,7 +108,7 @@ class LayerTest(tf.test.TestCase):
         layer = Layer(scope=scope)
 
         self.assertFalse(layer.built)
-        self.assertEquals(layer.name, layer.scope.name)
+        self.assertEqual(layer.name, layer.scope.name)
         _build.assert_not_called()
         _call.assert_not_called()
 
@@ -116,28 +116,28 @@ class LayerTest(tf.test.TestCase):
         self.assertTrue(layer.built)
         _build.assert_called_once()
         _call.assert_not_called()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
+        self.assertEqual(inp, out)
         _call.assert_called_once()
-        self.assertEquals(1, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(1, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
-        self.assertEquals(2, _call.call_count)
-        self.assertEquals(2, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(inp, out)
+        self.assertEqual(2, _call.call_count)
+        self.assertEqual(2, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
     def test_init_scope(self):
         """Test the layer with the scope initialization."""
@@ -175,29 +175,29 @@ class LayerTest(tf.test.TestCase):
         self.assertTrue(layer.built)
         _build.assert_called_once()
         _call.assert_not_called()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
-        self.assertEquals(layer.scope.name, utils.as_scope(scope).name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(layer.scope.name, utils.as_scope(scope).name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
+        self.assertEqual(inp, out)
         _call.assert_called_once()
-        self.assertEquals(1, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(1, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
-        self.assertEquals(2, _call.call_count)
-        self.assertEquals(2, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(inp, out)
+        self.assertEqual(2, _call.call_count)
+        self.assertEqual(2, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
     def test_build_scope(self):
         """Test the scope explicitly building the layer."""
@@ -229,14 +229,14 @@ class LayerTest(tf.test.TestCase):
         inp = object()
         out = layer.apply(inp, scope=scope)
         self.assertIsNotNone(layer.scope)
-        self.assertEquals(utils.as_scope(scope).name, layer.scope.name)
-        self.assertEquals(inp, out)
+        self.assertEqual(utils.as_scope(scope).name, layer.scope.name)
+        self.assertEqual(inp, out)
         _call.assert_called_once()
-        self.assertEquals(1, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(1, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
     def test_call_scope(self):
         """Test the scope straight calling the layer function."""
@@ -279,29 +279,29 @@ class LayerTest(tf.test.TestCase):
         _build.assert_called_once()
         _call.assert_not_called()
         self.assertIsNotNone(layer.scope)
-        self.assertEquals(layer.name, layer.scope.name)
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(layer.name, layer.scope.name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
+        self.assertEqual(inp, out)
         _call.assert_called_once()
-        self.assertEquals(1, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(1, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
         out = layer.apply(inp)
-        self.assertEquals(inp, out)
-        self.assertEquals(2, _call.call_count)
-        self.assertEquals(2, len(_call.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _call.side_effect.latest().name)
+        self.assertEqual(inp, out)
+        self.assertEqual(2, _call.call_count)
+        self.assertEqual(2, len(_call.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _call.side_effect.latest().name)
         _build.assert_called_once()
-        self.assertEquals(1, len(_build.side_effect.scopes()))
-        self.assertEquals(layer.scope.name, _build.side_effect.latest().name)
+        self.assertEqual(1, len(_build.side_effect.scopes()))
+        self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
     def test_reuse(self):
         """Test a layer with reusable scope.
@@ -372,13 +372,13 @@ class LayerTest(tf.test.TestCase):
             scope.reuse_variables()
             perform(scope, *inputs)
             variables = utils.get_variables(scope.name)
-            self.assertEquals(1, _build.call_count)
-            self.assertEquals(len(inputs), _call.call_count)
-            self.assertEquals(2, len(variables))
+            self.assertEqual(1, _build.call_count)
+            self.assertEqual(len(inputs), _call.call_count)
+            self.assertEqual(2, len(variables))
             actual = sorted([v.op.name for v in variables])
             expected = sorted([build_var_op_name, call_var_op_name])
             for act, exp in zip(actual, expected):
-                self.assertEquals(act, exp)
+                self.assertEqual(act, exp)
 
     @mock.patch.object(Layer, '_build')
     def test_reuse_unexisting_build(self, _build):
@@ -394,8 +394,8 @@ class LayerTest(tf.test.TestCase):
             with self.assertRaises(ValueError) as context:
                 layer.build()
             self.assertTrue(isinstance(context.exception, ValueError))
-            self.assertTrue(context.exception.message.startswith(
-                """Variable Scope/Variable does not exist, """ +\
+            self.assertTrue(str(context.exception).startswith(
+                """Variable Scope/Variable does not exist, """ +
                 """or was not created with tf.get_variable()"""))
 
     @mock.patch.object(Layer, '_call')
@@ -413,8 +413,8 @@ class LayerTest(tf.test.TestCase):
             with self.assertRaises(ValueError) as context:
                 layer.apply(object())
             self.assertTrue(isinstance(context.exception, ValueError))
-            self.assertTrue(context.exception.message.startswith(
-                """Variable Scope/Variable does not exist, """ +\
+            self.assertTrue(str(context.exception).startswith(
+                """Variable Scope/Variable does not exist, """ +
                 """or was not created with tf.get_variable()"""))
 
     @mock.patch.object(Layer, '_build')
@@ -431,7 +431,7 @@ class LayerTest(tf.test.TestCase):
             with self.assertRaises(ValueError) as context:
                 layer.build()
             self.assertTrue(isinstance(context.exception, ValueError))
-            self.assertTrue(context.exception.message.startswith(
+            self.assertTrue(str(context.exception).startswith(
                 'Variable Scope/Variable already exists'))
 
     @mock.patch.object(Layer, '_call')
@@ -448,7 +448,7 @@ class LayerTest(tf.test.TestCase):
             with self.assertRaises(ValueError) as context:
                 layer.apply(object())
             self.assertTrue(isinstance(context.exception, ValueError))
-            self.assertTrue(context.exception.message.startswith(
+            self.assertTrue(str(context.exception).startswith(
                 'Variable Scope/Variable already exists'))
 
     @mock.patch.object(Layer, '_call')
@@ -460,26 +460,26 @@ class LayerTest(tf.test.TestCase):
         """
         scope = utils.as_scope('Scope01')
         layer = Layer(scope=scope)
-        self.assertEquals(scope.name, layer.scope.name)
+        self.assertEqual(scope.name, layer.scope.name)
 
         layer.build(scope='Scope02')
-        self.assertEquals(scope.name, layer.scope.name)
+        self.assertEqual(scope.name, layer.scope.name)
 
         inp = object()
         _ = layer(inp, scope='Scope03')
-        self.assertEquals(scope.name, layer.scope.name)
-        self.assertEquals(1, _call.call_count)
+        self.assertEqual(scope.name, layer.scope.name)
+        self.assertEqual(1, _call.call_count)
         args, _ = _call.call_args
-        self.assertEquals(inp, args[0])
+        self.assertEqual(inp, args[0])
 
         inp = object()
         _ = layer(inp, scope='Scope04')
-        self.assertEquals(scope.name, layer.scope.name)
-        self.assertEquals(2, _call.call_count)
+        self.assertEqual(scope.name, layer.scope.name)
+        self.assertEqual(2, _call.call_count)
         args, _ = _call.call_args
-        self.assertEquals(inp, args[0])
+        self.assertEqual(inp, args[0])
 
-        self.assertEquals(1, _build.call_count)
+        self.assertEqual(1, _build.call_count)
 
 
 class BahdanauAttentionTest(tf.test.TestCase):
@@ -540,22 +540,27 @@ class BahdanauAttentionTest(tf.test.TestCase):
                             [0.8, 0.8, 0.8],
                             [0.7, 0.7, 0.7],
                             [0.6, 0.6, 0.6]]])
-        queries = [np.asarray([[1, 1], [2, 2]]), np.asarray([[.5, .5], [4, 4]])]
+        queries = [np.asarray([[1, 1], [2, 2]]),
+                   np.asarray([[.5, .5], [4, 4]])]
         scores = [np.array([[0.0904, 0.1017, 0.1128, 0.1238, 0.1345],
                             [0.2417, 0.2339, 0.2259, 0.2176, 0.2090]]),
                   np.array([[0.0517, 0.0634, 0.0750, 0.0866, 0.0979],
                             [0.3201, 0.3157, 0.3111, 0.3063, 0.3012]])]
 
         tf.reset_default_graph()
-        self.assertEquals(0, len(self._get_names(tf.GraphKeys.TRAINABLE_VARIABLES)))
-        init = tf.constant_initializer(0.1)
-        with tf.variable_scope('Scope', initializer=init) as scope:
-            states_ = tf.placeholder(dtype=tf.float32, shape=[None, None, state_size], name='S')
+        self.assertEqual(0, len(self._get_names(
+            tf.GraphKeys.TRAINABLE_VARIABLES)))
+        initializer = tf.constant_initializer(0.1)
+        with tf.variable_scope('Scope', initializer=initializer) as scope:
+            states_ = tf.placeholder(
+                dtype=tf.float32,
+                shape=[None, None, state_size],
+                name='S')
             queries_ = [tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q01'),
                         tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q02')]
             attention = layers.BahdanauAttention(
                 states_, attention_size, trainable=trainable, scope=scope)
-            self.assertEquals(trainable, attention.trainable)
+            self.assertEqual(trainable, attention.trainable)
             scores_ = [attention(q) for q in queries_]
 
         with tf.Session() as sess:
@@ -590,36 +595,366 @@ class TestPointingSoftmax(tf.test.TestCase):
     def test_base(self):
         """Basic usage of the `liteflow.layers.PointingSoftmax` class."""
 
-        query = tf.constant([[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
+        query = tf.constant(
+            [[0.05, 0.05, 0.05], [0.07, 0.07, 0.07]], dtype=tf.float32)
 
         states_np = np.asarray(
             [[[0.01, 0.01, 0.01], [0.02, 0.02, 0.02], [0.03, 0.03, 0.03], [0.04, 0.04, 0.04]],
              [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [23.0, 23.0, 23.0], [23.0, 23.0, 23.0]]])
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
         lengths = tf.constant([4, 2], dtype=tf.int32)
-        mask = tf.cast(tf.sequence_mask(lengths, tf.shape(states)[1]), tf.float32)
 
-        activations = tf.constant([[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
+        activations = tf.constant(
+            [[1, 1, 1, 1], [1, 2, 10, 10]], dtype=tf.float32)
 
-        exp_weights = np.asarray([[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
-        exp_context = np.asarray([[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
+        exp_weights = np.asarray(
+            [[0.25, 0.25, 0.25, 0.25], [0.2689414, 0.7310586, 0.0, 0.0]])
+        exp_context = np.asarray(
+            [[0.025, 0.025, 0.025], [0.17310574, 0.17310574, 0.17310574]])
 
         attention = mock.Mock()
         attention.states = states
-        attention.apply.side_effect = [activations]
+        attention.built = False
+        attention.apply.side_effect = [activations, activations]
 
-        layer = layers.PointingSoftmax(attention, mask=mask)
+        layer = layers.PointingSoftmax(attention, lengths)
         weights, context = layer(query)
+        _, _ = layer(query)
+        self.assertEqual(1, attention.build.call_count)
+        self.assertTrue(layer.built)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             feed_dict = {
                 states: states_np
             }
-            act_weights, act_context = sess.run([weights, context], feed_dict=feed_dict)
+            act_weights, act_context = sess.run(
+                [weights, context], feed_dict=feed_dict)
 
         self.assertAllClose(act_weights, exp_weights)
         self.assertAllClose(act_context, exp_context)
+
+    def test_build(self):
+        """Check that the build operation bounces on the injected attention."""
+
+        attention = mock.Mock()
+        attention.built = False
+        layer = layers.PointingSoftmax(attention)
+        self.assertFalse(layer.built)
+        self.assertEqual(0, attention.build.call_count)
+
+        layer.build()
+        self.assertTrue(layer.built)
+        self.assertEqual(1, attention.build.call_count)
+
+
+class TestPointingSoftmaxOutput(tf.test.TestCase):
+    """Test case for the PointingSoftmaxOutput layer."""
+
+    def test_build(self):
+        """Test that the  building phase goes upstream to the injected layer."""
+
+        layer = layers.PointingSoftmaxOutput(
+            emission_size=10,
+            decoder_out_size=7,
+            attention_size=4)
+        self.assertFalse(layer.built)
+        layer.build()
+        self.assertTrue(layer.built)
+
+    def test_base(self):
+        """Base test for the PointingSoftmaxOutput layer."""
+        decoder_out_size = 3
+        attention_size = 4
+        emission_size = 7
+
+        decoder_out = tf.constant(
+            [[1, 1, 1], [2, 2, 2]],
+            dtype=tf.float32)
+        pointing_scores = tf.constant(
+            [[0.1, 0.1, 0.1, 0.2, 0.5],
+             [0.2, 0.1, 0.5, 0.1, 0.1]],
+            dtype=tf.float32)
+        attention_context = tf.constant(
+            [[3, 3, 3, 3], [4, 4, 4, 4]],
+            dtype=tf.float32)
+        initializer = tf.constant_initializer(value=0.1)
+
+        with tf.variable_scope('', initializer=initializer):
+            layer = layers.PointingSoftmaxOutput(
+                emission_size=emission_size,
+                decoder_out_size=decoder_out_size,
+                attention_size=attention_size)
+            output = layer.apply(
+                decoder_out=decoder_out,
+                pointing_scores=pointing_scores,
+                attention_context=attention_context)
+
+        exp_output = np.asarray(
+            [[0.49811914, 0.49811914, 0.49811914, 0.49811914, 0.49811914,
+              0.49811914, 0.49811914, 0.01679816, 0.01679816, 0.01679816,
+              0.03359632, 0.08399081],
+             [0.60730052, 0.60730052, 0.60730052, 0.60730052, 0.60730052,
+              0.60730052, 0.60730052, 0.01822459, 0.00911230, 0.04556148,
+              0.00911230, 0.0091123]],
+            dtype=np.float32)  # pylint: disable=I0011,E1101
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_output = sess.run(output)
+        self.assertAllClose(exp_output, act_output)
+
+    def test_zero_output(self):
+        """Tests the zero-output."""
+        decoder_out_size = 3
+        attention_size = 4
+        emission_size = 7
+        batch_size = 2
+        pointing_size = 10
+        state_size = 5
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        batch_size_tensor = tf.shape(states)[0]
+        pointing_size_tensor = tf.shape(states)[1]
+        layer = layers.PointingSoftmaxOutput(emission_size, decoder_out_size, attention_size)
+        zero_output = layer.zero_output(batch_size_tensor, pointing_size_tensor)
+
+        data = np.ones((batch_size, pointing_size, state_size))
+        exp_shape = (batch_size, emission_size + pointing_size)
+        exp_zero_output = np.zeros(exp_shape)
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_zero_output = sess.run(zero_output, {states: data})
+        self.assertAllEqual(exp_zero_output, act_zero_output)
+
+
+class TestPointingDecoder(tf.test.TestCase):
+    """Test case for the PointingDecoder class."""
+
+    _SEED = 23
+
+    def setUp(self):
+        tf.reset_default_graph()
+        tf.set_random_seed(self._SEED)
+        np.random.seed(seed=self._SEED)
+
+    def test_build_and_init(self):
+        """Test the .build moethod and the default init tensors."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        zero_output = tf.zeros(tf.stack([
+            utils.get_dimension(states, 0),
+            emit_size + utils.get_dimension(states, 1)]))
+        cell_zero_state = tf.zeros(tf.stack([utils.get_dimension(states, 0), cell_state_size]))
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_zero_state]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [zero_output]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+
+        self.assertIsNone(layer.emit_out_init)
+        self.assertIsNone(layer.cell_out_init)
+        self.assertIsNone(layer.cell_state_init)
+
+        layer.build()
+        self.assertIsNotNone(layer.emit_out_init)
+        self.assertIsNotNone(layer.cell_out_init)
+        self.assertIsNotNone(layer.cell_state_init)
+
+        data = np.ones((batch_size, timesteps, state_size))
+        exp_output_init = np.zeros((batch_size, emit_size + timesteps))
+        exp_cell_out_init = np.zeros((batch_size, cell_output_size))
+        exp_cell_state_init = np.zeros((batch_size, cell_state_size))
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_output_init = sess.run(layer.emit_out_init, {states: data})
+            act_cell_out_init = sess.run(layer.cell_out_init, {states: data})
+            act_cell_state_init = sess.run(layer.cell_state_init, {states: data})
+
+        self.assertAllClose(act_output_init, exp_output_init)
+        self.assertAllClose(act_cell_out_init, exp_cell_out_init)
+        self.assertAllClose(act_cell_state_init, exp_cell_state_init)
+
+    def test_loop_fn_init(self):
+        """Test the initialization of the loop function."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+        attention_size = 7
+
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
+
+        # TODO(petrux): zero_output must become output_init with random values.
+        batch_dim = utils.get_dimension(states, 0)
+        timesteps_dim = utils.get_dimension(states, 1)
+        zero_output = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
+        time = tf.constant(0, dtype=tf.int32)
+
+        pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_zero_state]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+        pointing_softmax.sequence_length = sequence_length
+        pointing_softmax.side_effect = [(pointing_scores, attention_context)]
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [zero_output]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer.build()
+
+        results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
+        elements_finished = results[0]
+        next_cell_input = results[1]
+        next_cell_state = results[2]
+        emit_output = results[3]
+        next_pointing_scores, next_attention_context = results[4]
+
+        # Assertion of programatically returned tensors.
+        self.assertEqual(next_cell_state, cell_zero_state)
+        self.assertEqual(emit_output, zero_output)
+        self.assertEqual(next_pointing_scores, pointing_scores)
+        self.assertEqual(next_attention_context, attention_context)
+
+        # Data for feeding placeholders and expected values.
+        data = np.ones((batch_size, timesteps, state_size))
+        lengths = [timesteps] * batch_size
+        exp_elements_finished = np.asarray([False] * batch_size)
+
+        fetches = [elements_finished,
+                   next_cell_input,
+                   layer.cell_out_init,
+                   attention_context,
+                   zero_output]
+        feed_dict = {
+            states: data,
+            sequence_length: lengths}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            actual = sess.run(fetches, feed_dict)
+        act_elements_finished = actual[0]
+        act_next_cell_input = actual[1]
+        act_cell_out_init = actual[2]
+        act_attention_context = actual[3]
+        act_zero_output = actual[4]
+        act_next_cell_input_rebuilt = np.concatenate(
+            (act_cell_out_init, act_attention_context, act_zero_output), axis=1)
+
+        self.assertAllEqual(exp_elements_finished, act_elements_finished)
+        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
+
+    def test_loop_fn_step(self):
+        """Test a regular step of the loop function."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+        attention_size = 7
+        current_time = 5
+        lengths = [3, 10]
+
+        # placeholders and dynamic shapes.
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
+        batch_dim = utils.get_dimension(states, 0)
+        timesteps_dim = utils.get_dimension(states, 1)
+
+        # init values.
+        emit_out_init = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        cell_state_init = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
+
+        # input tensors.
+        time = tf.constant(current_time, dtype=tf.int32)
+        cell_output = tf.random_normal(shape=tf.stack([batch_dim, cell_output_size]))
+        cell_state = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
+        pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        loop_state = (pointing_scores, attention_context)
+
+        # output/next step tensors.
+        emit_out = tf.ones(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        next_pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        next_attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        next_loop_state = (next_pointing_scores, next_attention_context)
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_state_init]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+        pointing_softmax.sequence_length = sequence_length
+        pointing_softmax.side_effect = [next_loop_state]
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [emit_out_init]
+        pointing_softmax_output.side_effect = [emit_out]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer.build()
+
+        results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
+
+        # Assertions on programatically returned tensors.
+        self.assertEqual(cell_state, results[2])
+        self.assertEqual(emit_out, results[3])
+        self.assertEqual(next_loop_state, results[4])
+
+        elements_finished = results[0]
+        next_cell_input = results[1]
+        data = np.ones((batch_size, timesteps, state_size))
+        exp_elements_finished = np.asarray([current_time >= l for l in lengths])
+        fetches = [elements_finished,
+                   next_cell_input,
+                   cell_output,
+                   next_attention_context,
+                   emit_out]
+        feed_dict = {
+            states: data,
+            sequence_length: lengths
+        }
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            actual = sess.run(fetches, feed_dict)
+
+        act_elements_finished = actual[0]
+        act_next_cell_input = actual[1]
+        act_cell_out = actual[2]
+        act_attention_context = actual[3]
+        act_emit_out = actual[4]
+        act_next_cell_input_rebuilt = np.concatenate([
+            act_cell_out, act_attention_context, act_emit_out], axis=1)
+
+        self.assertAllEqual(exp_elements_finished, act_elements_finished)
+        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
 
 
 if __name__ == '__main__':

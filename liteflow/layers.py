@@ -1,5 +1,11 @@
 """Base contract for lite layers implementation."""
 
+#TODO(petrux): a STRONG refactoring is needed in the Layer superclass:
+#              1. the __call__(self, *args. **kwargs) method signature should avoid
+#                 any arguments other than *args, **kwargs
+#              2. a possible apply(...) method implementation should be leaved to subclasses
+#                 and should be documented instead of __call__
+
 import abc
 
 import tensorflow as tf
@@ -118,7 +124,7 @@ class Layer(object):
                 self._scope = utils.as_scope(scope)
             return
         if scope is not None:
-            tf.logging.warn(
+            tf.logging.warning(
                 """Trying to set the scope %s while"""
                 """ %s has already been set.""",
                 utils.as_scope(scope).name, self._scope.name)
@@ -145,9 +151,7 @@ class Layer(object):
           **kwargs: keyword arguments to be passed to `self._build()`.
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
-        Raises:        print 'TRAINABLE: ' + str(self._trainable)
-
-
+        Raises: 
           RuntimeError: if the layer has already been built, i.e. if `self.built`
             is equals to `True`.
 
@@ -155,6 +159,7 @@ class Layer(object):
         1. setup the scope (if not set yet);
         2. within the scope context, invoke the `self._build()` template method;
         3. set the `self.built` property to `True`.
+                InvalidArgumentError
         When subclassing the `Layer` class, you shall provide an implementation of
         the `Layer._build()` method so that all the other boilerplate stuff (namely
         item 1. and 3. from the above list) are performed by the `Layer.build()`
@@ -315,7 +320,7 @@ class BahdanauAttention(Layer):
           query: a 2-D Tensor of shape [batch, query]; the last dimension must
             be statically determined.
           *args: additional positional arguments to be passed to `self._call()`.
-          **kwargs: additional keyword arguments to be passed to `self._call()`.
+          **kwargs: additional keyword arguments
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
         Returns:
@@ -336,24 +341,243 @@ class BahdanauAttention(Layer):
 class PointingSoftmax(Layer):
     """Implements a PointingSoftmax over a set of attention states."""
 
-    def __init__(self, attention, mask=None, scope='PointingSoftmax'):
+    def __init__(self, attention, sequence_length=None, scope='PointingSoftmax'):
+        if attention.built:
+            raise ValueError('`attention` layer has already been built.')
         super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
-        self._mask = mask
-        # TODO(petrux): check dimension of the mask w.r.t. attention states.
+        self._sequence_length = sequence_length
+
+    @property
+    def attention(self):
+        """The attention layer used by the pointing softmax."""
+        return self._attention
+
+    @property
+    def sequence_length(self):
+        """A tensor representing the acthal lenght of sequences in a batch."""
+        return self._sequence_length
 
     def _build(self, *args, **kwargs):
-        """This class is just a wrapper so no operation is actually performed."""
-        pass
+        self._attention.build()
 
     def _call(self, query, *args, **kwargs):
         activations = self._attention.apply(query, *args, **kwargs)
-        weights = ops.softmax(activations, self._mask)
+        maxlen = utils.get_dimension(activations, -1)
+        mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
+        weights = ops.softmax(activations, mask)
         eweights = tf.expand_dims(weights, axis=2)
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
-        return (weights, context)
+        return weights, context
 
     def apply(self, query, *args, **kwargs):
-        """Wrapper for the __call__() method."""
+        """Wrapper for the __call__() method."""  # TODO(petrux): add actual documentation
         return super(PointingSoftmax, self).__call__(self, query, *args, **kwargs)
-    
+
+
+class PointingSoftmaxOutput(Layer):
+    """Implements the output layer for a PointingSoftmax."""
+
+    _SWITCH_KERNEL_NAME = 'SwitchKernel'
+    _SWITCH_BIAS_NAME = 'SwitchBias'
+    _EMIT_KERNEL_NAME = 'EmitKernel'
+    _EMIT_BIAS_NAME = 'EmitBias'
+
+    def __init__(self, emission_size, decoder_out_size, attention_size,
+                 trainable=True, scope='PointingSoftmaxOutput'):
+        super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
+        self._emission_size = emission_size
+        self._decoder_out_size = decoder_out_size
+        self._attention_size = attention_size
+        self._switch_kernel = None
+        self._switch_bias = None
+        self._emit_kernel = None
+        self._emit_bias = None
+
+    def _build(self, *args, **kwargs):
+        self._switch_kernel = tf.get_variable(
+            name=self._SWITCH_KERNEL_NAME,
+            shape=[self._decoder_out_size + self._attention_size, 1],
+            trainable=self.trainable)
+        self._switch_bias = tf.get_variable(
+            name=self._SWITCH_BIAS_NAME,
+            shape=[1],
+            trainable=self.trainable)
+        self._emit_kernel = tf.get_variable(
+            self._EMIT_KERNEL_NAME,
+            shape=[self._decoder_out_size, self._emission_size],
+            trainable=self.trainable)
+        self._emit_bias = tf.get_variable(
+            name=self._EMIT_BIAS_NAME,
+            shape=[self._emission_size],
+            trainable=self.trainable)
+
+    @property
+    def emission_size(self):
+        """The emission size."""
+        return self._emission_size
+
+    @property
+    def decoder_out_size(self):
+        """The decoder output size."""
+        return self._decoder_out_size
+
+    @property
+    def attention_size(self):
+        """The attention context vector size."""
+        return self._attention_size
+
+    def zero_output(self, batch_size, pointing_size):
+        """Zero-state output of the layer.
+
+        Arguments:
+          batch_size: a `int` or unit Tensor representing the batch size.
+          pointing_size: a `int` or unit Tensor representing the pointing scores size.
+
+        Returns:
+          a 2D tesor of size [batch_size, self.emission_size + pointing_size]
+          of tf.float32 zeros, represernting the default first output tensor of the layer.
+        """
+        shape = tf.stack([batch_size, self._emission_size + pointing_size])
+        return tf.zeros(shape, dtype=tf.float32)
+
+    def _call(self, decoder_out, pointing_scores, attention_context, *args, **kwargs):
+        """Wrapper for the __call__() method."""
+        # TODO(petrux): add actual documentation
+        switch_in = tf.concat([decoder_out, attention_context], axis=1)
+        switch = tf.nn.sigmoid(tf.matmul(switch_in, self._switch_kernel) + self._switch_bias)
+        emission = tf.nn.sigmoid(tf.matmul(decoder_out, self._emit_kernel) + self._emit_bias)
+        output = tf.concat([switch * emission, (1 - switch) * pointing_scores], axis=1)
+        return output
+
+    def apply(self, decoder_out, pointing_scores, attention_context, *args, **kwagrs):
+        return super(PointingSoftmaxOutput, self).__call__(
+            decoder_out, pointing_scores, attention_context, *args, **kwagrs)
+
+
+class PointingDecoder(Layer):
+    """PointingDecoder layer."""
+
+    # TODO(petrux): check that injected members have not been built.
+    # TODO(petrux): check dimensions (if statically defined).
+    # TODO(petrux): the feedback fit function should be injected.
+    def __init__(self, decoder_cell,
+                 pointing_softmax, pointing_softmax_output,
+                 emit_out_init=None, feedback_size=None,
+                 cell_out_init=None, cell_state_init=None,
+                 parallel_iterations=None, swap_memory=False,
+                 trainable=True, scope='PointingDecoder'):
+        super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
+        self._decoder_cell = decoder_cell
+        self._pointing_softmax = pointing_softmax
+        self._pointing_softmax_output = pointing_softmax_output
+        self._emit_out_init = emit_out_init
+        self._feedback_size = feedback_size
+        self._cell_out_init = cell_out_init
+        self._cell_state_init = cell_state_init
+        self._parallel_iterations = parallel_iterations
+        self._swap_memory = swap_memory
+        self._batch_size = None
+        self._pointing_size = None
+
+    @property
+    def emit_out_init(self):
+        """Initialization for the output signal."""
+        return self._emit_out_init
+
+    @property
+    def cell_out_init(self):
+        """Initialization for the decoder cell output signal."""
+        return self._cell_out_init
+
+    @property
+    def cell_state_init(self):
+        """Initialization for the cell state signal."""
+        return self._cell_state_init
+
+    def _build(self, *args, **kwargs):
+        self._pointing_softmax.build()
+        self._pointing_softmax_output.build()
+
+        states = self._pointing_softmax.attention.states
+        self._batch_size = utils.get_dimension(states, 0)
+        self._pointing_size = utils.get_dimension(states, 1)
+        if self._emit_out_init is None:
+            self._emit_out_init = self._pointing_softmax_output.zero_output(
+                self._batch_size, self._pointing_size)
+
+        if self._cell_out_init is None:
+            cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
+            self._cell_out_init = tf.zeros(cell_out_shape)
+
+        if self._cell_state_init is None:
+            self._cell_state_init = self._decoder_cell.zero_state(self._batch_size)
+
+    def _loop_fn(self, time, cell_output, cell_state, loop_state):
+
+        # Determin how many sequences are actually over and define
+        # a flag to check if all of them have been fully scanned.
+        # TODO(petrux): deal with no sequence length set.
+        elements_finished = (time >= self._pointing_softmax.sequence_length)
+        # finished = tf.reduce_all(elements_finished)
+
+        # Unpack the loop state: it must contain two 2D tensors
+        # representing the pointing softmax and the attention context
+        # respectively for the given batch.
+        pointing_softmax, attention_context = loop_state
+
+        # Declare and initialize to `None` all the return arguments.
+        next_cell_input = None
+        next_cell_state = None
+        emit_output = None
+        next_loop_state = (None, None)
+        feedback = None
+
+        if cell_output is None:
+            # If the `cell_output` is None, it means we are at the very
+            # first iteration. In this case, we need to initialize the
+            # return arguments to their initial values.
+            cell_output = self._cell_out_init
+            next_cell_state = self._cell_state_init
+            emit_output = self._emit_out_init
+        else:
+            next_cell_state = cell_state
+            emit_output = self._pointing_softmax_output(
+                cell_output, pointing_softmax, attention_context)
+
+        # Evaluate the pointing scores and the attention context for
+        # the next step and pack them into the loop state.
+        # pointing_softmax, attention_context = tf.cond(
+        #     finished,
+        #     lambda: (None, None),
+        #     lambda: self._pointing_softmax(cell_output))
+        pointing_softmax, attention_context = self._pointing_softmax(cell_output)
+        next_loop_state = (pointing_softmax, attention_context)
+
+        # If a feedback_size has been set, the emit_output is fit to that
+        # limit (padded or trimmed) in order to be fed back to the decoder
+        # cell (that must have a constant input size).
+        if self._feedback_size:
+            feedback = ops.fit(emit_output, self._feedback_size)
+        else:
+            feedback = emit_output
+
+        # Pack the next input for the decoder cell. Such input is
+        # the concatenation of the current cell output (since it is
+        # a recurrent scenario), the current attention_context and
+        # the feedbakc coming from the output signal.
+        next_cell_input = tf.concat(
+            [cell_output, attention_context, feedback],
+            axis=1)
+
+        return (elements_finished, next_cell_input, next_cell_state,
+                emit_output, next_loop_state)
+
+    def _call(self, *args, **kwargs):
+        outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
+        outputs = outputs_ta.pack()
+        return outputs
+
+    def apply(self, inp=None):  #TODO(petrux): this method should be 0-arity
+        """Run."""
+        return super(PointingDecoder, self).__call__(inp)

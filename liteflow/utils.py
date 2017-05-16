@@ -84,3 +84,48 @@ def shapes(tensors):
         representing their static shape (via `tf.Tensor.get_shape()`).
     """
     return [t.get_shape() for t in tensors]
+
+
+def get_dimension(tensor, dim, ensure_tensor=False):
+    """Returns a dimension of a tensor.
+
+    Given a `Tensor`, retutns the `dim`-th dimension. If the
+    dimension is specified, the `int` value of the dimension from the
+    static shape of the tensor will be returned, otherwise a tensor
+    representing the `dim`-th slice of the dynamic shape. To force
+    the result to be always a tensor, set the `ensure_tensor`
+    argument to `True`.
+
+    Arguments:
+      tensor: a `Tensor`.
+      dim: a `int` representing the 0-based index of one of the dimensions of `tensor`.
+      ensure_tensor: default `False`, ensure the result to be a `Tensor`.
+
+    Returns:
+      a `int` or a `Tensor` representing the value of the`dim`-th
+      dimension of the `tensor`. If `ensure_tensor` is set to `True`
+      a `Tensor` is always returned.
+
+    Raises:
+      TypeError: if `tensor` or `dim` are None.
+      IndexError: if `dim` not compatible with the rank (i.e. the number
+        of dimensions) of `tensor`, if specified.
+
+    Example:
+    ```
+    >>> import tensorflow as tf
+    >>> from liteflow import utils
+    ```
+    """
+
+    if tensor is None:
+        raise TypeError('`tensor` cannot be of `None` type.')
+    if dim is None:
+        raise TypeError('`dim` cannot be of `None` type.')
+
+    dimension = tensor.shape[dim]
+    if dimension.value is None:
+        return tf.shape(tensor)[dim]
+    if ensure_tensor:
+        return tf.convert_to_tensor(dimension.value)
+    return dimension.value
