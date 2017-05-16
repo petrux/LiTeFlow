@@ -769,6 +769,7 @@ class TestPointingDecoder(tf.test.TestCase):
             utils.get_dimension(states, 0),
             emit_size + utils.get_dimension(states, 1)]))
         cell_zero_state = tf.zeros(tf.stack([utils.get_dimension(states, 0), cell_state_size]))
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
 
         decoder_cell = mock.Mock()
         decoder_cell.output_size = cell_output_size
@@ -780,7 +781,11 @@ class TestPointingDecoder(tf.test.TestCase):
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [zero_output]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
 
         self.assertIsNone(layer.emit_out_init)
         self.assertIsNone(layer.cell_out_init)
@@ -835,13 +840,16 @@ class TestPointingDecoder(tf.test.TestCase):
 
         pointing_softmax = mock.Mock()
         pointing_softmax.attention.states = states
-        pointing_softmax.sequence_length = sequence_length
         pointing_softmax.side_effect = [(pointing_scores, attention_context)]
 
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [output_init]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
         layer.build()
 
         results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
@@ -927,14 +935,17 @@ class TestPointingDecoder(tf.test.TestCase):
 
         pointing_softmax = mock.Mock()
         pointing_softmax.attention.states = states
-        pointing_softmax.sequence_length = sequence_length
         pointing_softmax.side_effect = [next_loop_state]
 
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [emit_out_init]
         pointing_softmax_output.side_effect = [emit_out]
 
-        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            sequence_length=sequence_length,
+            pointing_softmax=pointing_softmax,
+            pointing_softmax_output=pointing_softmax_output)
         layer.build()
 
         results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
