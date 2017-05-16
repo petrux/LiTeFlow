@@ -458,6 +458,9 @@ class PointingSoftmaxOutput(Layer):
 class PointingDecoder(Layer):
     """PointingDecoder layer."""
 
+    # TODO(petrux): check that injected members have not been built.
+    # TODO(petrux): check dimensions (if statically defined).
+    # TODO(petrux): the feedback fit function should be injected.
     def __init__(self, decoder_cell,
                  pointing_softmax, pointing_softmax_output,
                  emit_out_init=None, feedback_size=None,
@@ -514,8 +517,9 @@ class PointingDecoder(Layer):
 
         # Determin how many sequences are actually over and define
         # a flag to check if all of them have been fully scanned.
-        elements_finished = (time > self._pointing_softmax.sequence_length)
-        finished = tf.reduce_all(elements_finished)
+        # TODO(petrux): deal with no sequence length set.
+        elements_finished = (time >= self._pointing_softmax.sequence_length)
+        # finished = tf.reduce_all(elements_finished)
 
         # Unpack the loop state: it must contain two 2D tensors
         # representing the pointing softmax and the attention context
@@ -538,18 +542,16 @@ class PointingDecoder(Layer):
             emit_output = self._emit_out_init
         else:
             next_cell_state = cell_state
-            emit_output = tf.cond(
-                finished,
-                lambda: None,
-                lambda: self._pointing_softmax_output(
-                    cell_output, pointing_softmax, attention_context))
+            emit_output = self._pointing_softmax_output(
+                cell_output, pointing_softmax, attention_context)
 
         # Evaluate the pointing scores and the attention context for
         # the next step and pack them into the loop state.
-        pointing_softmax, attention_context = tf.cond(
-            finished,
-            lambda: (None, None),
-            lambda: self._pointing_softmax(cell_output))
+        # pointing_softmax, attention_context = tf.cond(
+        #     finished,
+        #     lambda: (None, None),
+        #     lambda: self._pointing_softmax(cell_output))
+        pointing_softmax, attention_context = self._pointing_softmax(cell_output)
         next_loop_state = (pointing_softmax, attention_context)
 
         # If a feedback_size has been set, the emit_output is fit to that

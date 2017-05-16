@@ -730,6 +730,13 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
 class TestPointingDecoder(tf.test.TestCase):
     """Test case for the PointingDecoder class."""
 
+    _SEED = 23
+
+    def setUp(self):
+        tf.reset_default_graph()
+        tf.set_random_seed(self._SEED)
+        np.random.seed(seed=self._SEED)
+
     def test_build_and_init(self):
         """Test the .build moethod and the default init tensors."""
 
@@ -781,6 +788,174 @@ class TestPointingDecoder(tf.test.TestCase):
         self.assertAllClose(act_output_init, exp_output_init)
         self.assertAllClose(act_cell_out_init, exp_cell_out_init)
         self.assertAllClose(act_cell_state_init, exp_cell_state_init)
+
+    def test_loop_fn_init(self):
+        """Test the initialization of the loop function."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+        attention_size = 7
+
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
+
+        # TODO(petrux): zero_output must become output_init with random values.
+        batch_dim = utils.get_dimension(states, 0)
+        timesteps_dim = utils.get_dimension(states, 1)
+        zero_output = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
+        time = tf.constant(0, dtype=tf.int32)
+
+        pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_zero_state]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+        pointing_softmax.sequence_length = sequence_length
+        pointing_softmax.side_effect = [(pointing_scores, attention_context)]
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [zero_output]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer.build()
+
+        results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
+        elements_finished = results[0]
+        next_cell_input = results[1]
+        next_cell_state = results[2]
+        emit_output = results[3]
+        next_pointing_scores, next_attention_context = results[4]
+
+        # Assertion of programatically returned tensors.
+        self.assertEqual(next_cell_state, cell_zero_state)
+        self.assertEqual(emit_output, zero_output)
+        self.assertEqual(next_pointing_scores, pointing_scores)
+        self.assertEqual(next_attention_context, attention_context)
+
+        # Data for feeding placeholders and expected values.
+        data = np.ones((batch_size, timesteps, state_size))
+        lengths = [timesteps] * batch_size
+        exp_elements_finished = np.asarray([False] * batch_size)
+
+        fetches = [elements_finished,
+                   next_cell_input,
+                   layer.cell_out_init,
+                   attention_context,
+                   zero_output]
+        feed_dict = {
+            states: data,
+            sequence_length: lengths}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            actual = sess.run(fetches, feed_dict)
+        act_elements_finished = actual[0]
+        act_next_cell_input = actual[1]
+        act_cell_out_init = actual[2]
+        act_attention_context = actual[3]
+        act_zero_output = actual[4]
+        act_next_cell_input_rebuilt = np.concatenate(
+            (act_cell_out_init, act_attention_context, act_zero_output), axis=1)
+
+        self.assertAllEqual(exp_elements_finished, act_elements_finished)
+        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
+
+    def test_loop_fn_step(self):
+        """Test a regular step of the loop function."""
+
+        emit_size = 3
+        batch_size = 2
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+        attention_size = 7
+        current_time = 5
+        lengths = [3, 10]
+
+        # placeholders and dynamic shapes.
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
+        batch_dim = utils.get_dimension(states, 0)
+        timesteps_dim = utils.get_dimension(states, 1)
+
+        # init values.
+        emit_out_init = tf.zeros(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        cell_state_init = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
+
+        # input tensors.
+        time = tf.constant(current_time, dtype=tf.int32)
+        cell_output = tf.random_normal(shape=tf.stack([batch_dim, cell_output_size]))
+        cell_state = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
+        pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        loop_state = (pointing_scores, attention_context)
+
+        # output/next step tensors.
+        emit_out = tf.ones(tf.stack([batch_dim, emit_size + timesteps_dim]))
+        next_pointing_scores = tf.random_normal(shape=[batch_dim, timesteps_dim])
+        next_attention_context = tf.random_normal(shape=[batch_dim, attention_size])
+        next_loop_state = (next_pointing_scores, next_attention_context)
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        decoder_cell.zero_state.side_effect = [cell_state_init]
+
+        pointing_softmax = mock.Mock()
+        pointing_softmax.attention.states = states
+        pointing_softmax.sequence_length = sequence_length
+        pointing_softmax.side_effect = [next_loop_state]
+
+        pointing_softmax_output = mock.Mock()
+        pointing_softmax_output.zero_output.side_effect = [emit_out_init]
+        pointing_softmax_output.side_effect = [emit_out]
+
+        layer = layers.PointingDecoder(decoder_cell, pointing_softmax, pointing_softmax_output)
+        layer.build()
+
+        results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
+
+        # Assertions on programatically returned tensors.
+        self.assertEqual(cell_state, results[2])
+        self.assertEqual(emit_out, results[3])
+        self.assertEqual(next_loop_state, results[4])
+
+        elements_finished = results[0]
+        next_cell_input = results[1]
+        data = np.ones((batch_size, timesteps, state_size))
+        exp_elements_finished = np.asarray([current_time >= l for l in lengths])
+        fetches = [elements_finished,
+                   next_cell_input,
+                   cell_output,
+                   next_attention_context,
+                   emit_out]
+        feed_dict = {
+            states: data,
+            sequence_length: lengths
+        }
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            actual = sess.run(fetches, feed_dict)
+
+        act_elements_finished = actual[0]
+        act_next_cell_input = actual[1]
+        act_cell_out = actual[2]
+        act_attention_context = actual[3]
+        act_emit_out = actual[4]
+        act_next_cell_input_rebuilt = np.concatenate([
+            act_cell_out, act_attention_context, act_emit_out], axis=1)
+
+        self.assertAllEqual(exp_elements_finished, act_elements_finished)
+        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
+
 
 if __name__ == '__main__':
     tf.test.main()
