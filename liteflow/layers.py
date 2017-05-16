@@ -1,11 +1,8 @@
 """Base contract for lite layers implementation."""
 
-#TODO(petrux): a STRONG refactoring is needed in the Layer superclass:
-#              1. the __call__(self, *args. **kwargs) method signature should avoid
-#                 any arguments other than *args, **kwargs
-#              2. a possible apply(...) method implementation should be leaved to subclasses
-#                 and should be documented instead of __call__
-
+# TODO(petrux): refactoring on .build(): check if injected layers have been built
+#               and if not invoke the same method upstream. But no check should be
+#               done in the __init__() of the downstream layer.
 import abc
 
 import tensorflow as tf
@@ -40,7 +37,6 @@ class Layer(object):
 
         def _call(inp, *args, **kwargs):
             self.__class__.__name__ + '._build(' + str(inp) + ')'
-
 
     tensor = tf.get_variable(name='Variable', shape=[2, 2])
     foo = FooLayer()
@@ -133,8 +129,9 @@ class Layer(object):
     def _build(self, *args, **kwargs):
         """Build the layer.
 
-        NOTA BENE: this is an abstract method that must be implemented
-        by concrete subclasses.
+        Remarks:
+          this is an abstract method that must be implemented
+          by concrete subclasses.
         """
         raise NotImplementedError(
             'This method must be implemented in subclasses.')
@@ -151,7 +148,7 @@ class Layer(object):
           **kwargs: keyword arguments to be passed to `self._build()`.
             **Note**, the kwarg `scope` is reserved for use by the layer.
 
-        Raises: 
+        Raises:
           RuntimeError: if the layer has already been built, i.e. if `self.built`
             is equals to `True`.
 
@@ -159,7 +156,7 @@ class Layer(object):
         1. setup the scope (if not set yet);
         2. within the scope context, invoke the `self._build()` template method;
         3. set the `self.built` property to `True`.
-                InvalidArgumentError
+
         When subclassing the `Layer` class, you shall provide an implementation of
         the `Layer._build()` method so that all the other boilerplate stuff (namely
         item 1. and 3. from the above list) are performed by the `Layer.build()`
@@ -176,7 +173,7 @@ class Layer(object):
         self._built = True
 
     @abc.abstractmethod
-    def _call(self, inp, *args, **kwargs):
+    def _call(self, *args, **kwargs):
         """Run the layer logic.
 
         NOTA BENE: this is an abstract method that must be implemented
@@ -185,17 +182,25 @@ class Layer(object):
         raise NotImplementedError(
             'This method must be implemented in subclasses.')
 
-    def __call__(self, inp, *args, **kwargs):
-        """Wraps `self._call()`, applying pre- and post-processing steps.
+    def __call__(self, *args, **kwargs):
+        """Execute the layer logics, applying pre- and post-processing steps.
+
+        The layer logic is supposed to happen in the concrete implementation
+        of the abstract method `_call()`. This method executes some pre- and
+        post-processing. We can sketch the internal workflow of the method as:
+        1. get the scope (as the `scope` kwarg)
+        2. if the layer has not been built, build it, otherwise just set
+           set the scope so that variables are reused.
+        3. invoke the `_call()` method with the very same arguments (with the only
+           exception of the `scope` argument, if present).
 
         Arguments:
-          inputs: input tensor that will be passed to `self._call()`.
-          *args: additional positional arguments to be passed to `self._call()`.
-          **kwargs: additional keyword arguments to be passed to `self._call()`.
-            **Note**, the kwarg `scope` is reserved for use by the layer.
+          *args: additional positional arguments.
+          **kwargs: additional keyword arguments. **Note** that the
+            keyword argument `scope` is reserved for use by the layer.
 
         Returns:
-          Output tensor.
+          a tuple of output tensors.
         """
         self._set_scope(kwargs.pop('scope', None))
         with tf.variable_scope(self._scope) as scope:
@@ -204,11 +209,15 @@ class Layer(object):
                 self._built = True
             else:
                 scope.reuse_variables()
-            return self._call(inp, *args, **kwargs)
+            return self._call(*args, **kwargs)
 
-    def apply(self, inp, *args, **kwargs):
-        """Wrapper for the `self.__call__()` method."""
-        return self.__call__(inp, *args, **kwargs)
+    def call(self, *args, **kwargs):
+        """Wraps the `__call__()` method.
+
+        NOTA BENE: The documentation of this method should be rewritten
+        in the concrete subclasses.
+        """
+        return self.__call__(*args, **kwargs)
 
 
 class BahdanauAttention(Layer):
@@ -296,8 +305,7 @@ class BahdanauAttention(Layer):
         self._add_var(kernel)
         self._add_var(self._vector)
 
-    def _call(self, query, *args, **kwargs):
-        """Implement the layer logic."""
+    def _call(self, query):  # pylint: disable=I0011,W0221
         query_size = query.get_shape()[-1].value
         if query_size is None:
             raise ValueError(
@@ -313,15 +321,12 @@ class BahdanauAttention(Layer):
         activations = tf.reduce_sum(activations, [2, 3])
         return activations
 
-    def __call__(self, query, *args, **kwargs):
+    def call(self, query):  # pylint: disable=I0011,W0221
         """Calculate the attention scores over `self.states` for the given queries.
 
         Arguments:
-          query: a 2-D Tensor of shape [batch, query]; the last dimension must
-            be statically determined.
-          *args: additional positional arguments to be passed to `self._call()`.
-          **kwargs: additional keyword arguments
-            **Note**, the kwarg `scope` is reserved for use by the layer.
+          query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
+            must be statically determined.
 
         Returns:
           A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
@@ -331,11 +336,7 @@ class BahdanauAttention(Layer):
           ValueError: if the last dimension of the `query` argument
             is not statically determined.
         """
-        return super(BahdanauAttention, self).__call__(query, *args, **kwargs)
-
-    def apply(self, query, *args, **kwargs):
-        """Wrapper for the `self.__call__()` method."""
-        return super(BahdanauAttention, self).__call__(query, *args, **kwargs)
+        return super(BahdanauAttention, self).__call__(query)
 
 
 class PointingSoftmax(Layer):
@@ -361,8 +362,8 @@ class PointingSoftmax(Layer):
     def _build(self, *args, **kwargs):
         self._attention.build()
 
-    def _call(self, query, *args, **kwargs):
-        activations = self._attention.apply(query, *args, **kwargs)
+    def _call(self, query):  # pylint: disable=I0011,W0221
+        activations = self._attention.apply(query)
         maxlen = utils.get_dimension(activations, -1)
         mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
         weights = ops.softmax(activations, mask)
@@ -370,9 +371,19 @@ class PointingSoftmax(Layer):
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
         return weights, context
 
-    def apply(self, query, *args, **kwargs):
-        """Wrapper for the __call__() method."""  # TODO(petrux): add actual documentation
-        return super(PointingSoftmax, self).__call__(self, query, *args, **kwargs)
+    def call(self, query):  # pylint: disable=I0011,W0221
+        """Calculate the pointing softmax over a set of input states.
+
+         Arguments:
+          query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
+            must be statically determined.
+
+        Returns:
+          A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
+            dimension of the attention states; such tensor is intended to approximate
+            a probability distribution across the states.
+        """
+        return super(PointingSoftmax, self).__call__(self, query)
 
 
 class PointingSoftmaxOutput(Layer):
@@ -383,6 +394,7 @@ class PointingSoftmaxOutput(Layer):
     _EMIT_KERNEL_NAME = 'EmitKernel'
     _EMIT_BIAS_NAME = 'EmitBias'
 
+    # TODO(petrux): attention_size NONSENSE!!!
     def __init__(self, emission_size, decoder_out_size, attention_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
         super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
@@ -441,18 +453,30 @@ class PointingSoftmaxOutput(Layer):
         shape = tf.stack([batch_size, self._emission_size + pointing_size])
         return tf.zeros(shape, dtype=tf.float32)
 
-    def _call(self, decoder_out, pointing_scores, attention_context, *args, **kwargs):
-        """Wrapper for the __call__() method."""
-        # TODO(petrux): add actual documentation
+    def _call(self, decoder_out, pointing_scores, attention_context):  # pylint: disable=I0011,W0221
         switch_in = tf.concat([decoder_out, attention_context], axis=1)
         switch = tf.nn.sigmoid(tf.matmul(switch_in, self._switch_kernel) + self._switch_bias)
         emission = tf.nn.sigmoid(tf.matmul(decoder_out, self._emit_kernel) + self._emit_bias)
         output = tf.concat([switch * emission, (1 - switch) * pointing_scores], axis=1)
         return output
 
-    def apply(self, decoder_out, pointing_scores, attention_context, *args, **kwagrs):
+    def call(self, decoder_out, pointing_scores, attention_context):  # pylint: disable=I0011,W0221
+        """Computes the output of a pointing decoder.
+
+        Arguments:
+          decoder_out: a 2D tensor of shape [batch_size, decoder_output_size]
+            representing the output of the recurrent decoder.
+          pointing_scores: a 2D tensor of shape [batch_size, timesteps] representing
+            the pointing scores over the attention states.
+          attention_context: a 2D tensor of shape [batch_size, state_size]
+            representing the attention context vector over the attention states.
+
+        Returns:
+          a 2D tensor of shape [batch_size, shortlist_size + timesteps] representing
+          a probability distribution over the output shortlist **and** the input states.
+        """
         return super(PointingSoftmaxOutput, self).__call__(
-            decoder_out, pointing_scores, attention_context, *args, **kwagrs)
+            decoder_out, pointing_scores, attention_context)
 
 
 class PointingDecoder(Layer):
@@ -461,6 +485,7 @@ class PointingDecoder(Layer):
     # TODO(petrux): check that injected members have not been built.
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
+    # TODO(petrux): BUG the sequence length is not the input length.
     def __init__(self, decoder_cell,
                  pointing_softmax, pointing_softmax_output,
                  emit_out_init=None, feedback_size=None,
@@ -574,11 +599,16 @@ class PointingDecoder(Layer):
         return (elements_finished, next_cell_input, next_cell_state,
                 emit_output, next_loop_state)
 
-    def _call(self, *args, **kwargs):
+    def _call(self):    # pylint: disable=I0011,W0221
         outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
         outputs = outputs_ta.pack()
         return outputs
 
-    def apply(self, inp=None):  #TODO(petrux): this method should be 0-arity
-        """Run."""
-        return super(PointingDecoder, self).__call__(inp)
+    def call(self):    # pylint: disable=I0011,W0221
+        """Decode using pointing softmax.
+
+        Returns:
+          a 3D tensor of shape [batch_size, length, output_size] representing
+          the decoder output.
+        """
+        return super(PointingDecoder, self).__call__()

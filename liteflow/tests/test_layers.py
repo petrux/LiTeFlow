@@ -12,6 +12,7 @@ from liteflow import utils
 # and local variables since we are dealing with tests.
 # pylint: disable=R0914, R0915
 
+
 class Layer(layers.Layer):
     """Dummy `layers.Layer` implementation."""
 
@@ -21,7 +22,7 @@ class Layer(layers.Layer):
     def _build(self, *args, **kwargs):
         return None
 
-    def _call(self, inp, *args, **kwargs):
+    def _call(self, inp, *args, **kwargs):  # pylint: disable=I0011,W0221
         return None
 
 
@@ -123,7 +124,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -133,7 +134,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -183,7 +184,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, utils.as_scope(scope).name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -193,7 +194,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -230,7 +231,7 @@ class LayerTest(tf.test.TestCase):
         _call.assert_not_called()
 
         inp = object()
-        out = layer.apply(inp, scope=scope)
+        out = layer.call(inp, scope=scope)
         self.assertIsNotNone(layer.scope)
         self.assertEqual(utils.as_scope(scope).name, layer.scope.name)
         self.assertEqual(inp, out)
@@ -287,7 +288,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         _call.assert_called_once()
         self.assertEqual(1, len(_call.side_effect.scopes()))
@@ -297,7 +298,7 @@ class LayerTest(tf.test.TestCase):
         self.assertEqual(layer.scope.name, _build.side_effect.latest().name)
 
         inp = object()
-        out = layer.apply(inp)
+        out = layer.call(inp)
         self.assertEqual(inp, out)
         self.assertEqual(2, _call.call_count)
         self.assertEqual(2, len(_call.side_effect.scopes()))
@@ -320,7 +321,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer(scope=scope)
             layer.build()
             for arg in args:
-                layer.apply(arg)
+                layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_init_scope)
 
@@ -328,7 +329,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer()
             layer.build(scope=scope)
             for arg in args:
-                layer.apply(arg)
+                layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_build_scope)
 
@@ -336,9 +337,9 @@ class LayerTest(tf.test.TestCase):
             layer = Layer()
             for i, arg in enumerate(args):
                 if i == 0:
-                    layer.apply(arg, scope=scope)
+                    layer.call(arg, scope=scope)
                 else:
-                    layer.apply(arg)
+                    layer.call(arg)
         tf.reset_default_graph()
         self._test_reuse(_apply_scope)
 
@@ -414,7 +415,7 @@ class LayerTest(tf.test.TestCase):
             layer = Layer(scope=scope)
             layer.build()
             with self.assertRaises(ValueError) as context:
-                layer.apply(object())
+                layer.call(object())
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(str(context.exception).startswith(
                 """Variable Scope/Variable does not exist, """ +
@@ -449,7 +450,7 @@ class LayerTest(tf.test.TestCase):
             _do_call()
             layer = Layer(scope=scope)
             with self.assertRaises(ValueError) as context:
-                layer.apply(object())
+                layer.call(object())
             self.assertTrue(isinstance(context.exception, ValueError))
             self.assertTrue(str(context.exception).startswith(
                 'Variable Scope/Variable already exists'))
@@ -688,7 +689,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
                 emission_size=emission_size,
                 decoder_out_size=decoder_out_size,
                 attention_size=attention_size)
-            output = layer.apply(
+            output = layer.call(
                 decoder_out=decoder_out,
                 pointing_scores=pointing_scores,
                 attention_context=attention_context)
