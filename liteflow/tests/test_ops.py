@@ -56,7 +56,7 @@ class FitTrimPadTest(tf.test.TestCase):
         output = ops.fit(input_, fit_width)
 
         input_actual = np.random.rand(batch, length, width)  # pylint: disable=I0011,E1101
-        delete_idx = [width - (i + 1) for i in xrange(delta)]
+        delete_idx = [width - (i + 1) for i in range(delta)]
         output_expected = np.delete(input_actual, delete_idx, axis=2)  # pylint: disable=I0011,E1101
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -135,7 +135,7 @@ class FitTrimPadTest(tf.test.TestCase):
         output = ops.trim(input_, width_smaller)
 
         input_actual = np.random.rand(batch, length, width)  # pylint: disable=I0011,E1101
-        delete_idx = [width - (i + 1) for i in xrange(delta)]
+        delete_idx = [width - (i + 1) for i in range(delta)]
         output_expected = np.delete(input_actual, delete_idx, axis=2)  # pylint: disable=I0011,E1101
 
         with tf.Session() as sess:
