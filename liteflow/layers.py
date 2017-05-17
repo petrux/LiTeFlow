@@ -231,7 +231,7 @@ class BahdanauAttention(Layer):
     _VECTOR_NAME = 'Vector'
     _WEIGHTS_NAME = 'Weights'
 
-    def __init__(self, states, size, trainable=True, scope=None):
+    def __init__(self, states, inner_size, trainable=True, scope=None):
         """Initiailzes a new instance of the BahdanauAttention class.
 
         The attention mechanism implemented in this class is the one
@@ -257,7 +257,7 @@ class BahdanauAttention(Layer):
         """
         super(BahdanauAttention, self).__init__(trainable=trainable, scope=scope)
         self._states = states
-        self._size = size
+        self._size = inner_size
         self._memory = None
         self._vector = None
         self._var_op_names = set()
@@ -276,8 +276,8 @@ class BahdanauAttention(Layer):
         return self._states
 
     @property
-    def size(self):
-        """The attention size."""
+    def inner_size(self):
+        """The inner attention size."""
         return self._size
 
     def _add_var(self, var):
@@ -336,11 +336,11 @@ class BahdanauAttention(Layer):
         return super(BahdanauAttention, self).__call__(query)
 
 
-class PointingSoftmax(Layer):
+class LocationSoftmax(Layer):
     """Implements a PointingSoftmax over a set of attention states."""
 
     def __init__(self, attention, sequence_length=None, scope='PointingSoftmax'):
-        super(PointingSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
+        super(LocationSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
         self._sequence_length = sequence_length
 
@@ -351,7 +351,7 @@ class PointingSoftmax(Layer):
 
     @property
     def sequence_length(self):
-        """A tensor representing the acthal lenght of sequences in a batch."""
+        """A tensor representing the actual lenght of sequences of states in a batch."""
         return self._sequence_length
 
     def _build(self, *args, **kwargs):
@@ -368,18 +368,24 @@ class PointingSoftmax(Layer):
         return weights, context
 
     def call(self, query):  # pylint: disable=I0011,W0221
-        """Calculate the pointing softmax over a set of input states.
+        """Calculate the location softmax and attention context over a set of input states.
 
          Arguments:
           query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
             must be statically determined.
 
         Returns:
-          A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
-            dimension of the attention states; such tensor is intended to approximate
-            a probability distribution across the states.
+          a tuple of 2 tensors:
+            location_softmax: A 2D tensor of shape [batch_size, timesteps] where
+              `timesteps` is the second dimension of the attention states; such
+              tensor is intended to represent a probability distribution across
+              the states.
+            attention_context: a 2D tenros of shape [batch_size, state_size] where
+              `state_size` is the size of the attention states (the 3rd dimension);
+              such tensor is intended to represent the attention context vector over
+              the attention states.
         """
-        return super(PointingSoftmax, self).__call__(self, query)
+        return super(LocationSoftmax, self).__call__(self, query)
 
 
 class PointingSoftmaxOutput(Layer):
@@ -387,19 +393,19 @@ class PointingSoftmaxOutput(Layer):
 
     _SWITCH_KERNEL_NAME = 'SwitchKernel'
     _SWITCH_BIAS_NAME = 'SwitchBias'
-    _EMIT_KERNEL_NAME = 'EmitKernel'
-    _EMIT_BIAS_NAME = 'EmitBias'
+    _SHORTLIST_KERNEL_NAME = 'ShortlistKernel'
+    _SHORTLIST_BIAS_NAME = 'ShortlistBias'
 
-    def __init__(self, emission_size, decoder_out_size, state_size,
+    def __init__(self, shortlist_size, decoder_out_size, state_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
         super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
-        self._emission_size = emission_size
+        self._shortlist_size = shortlist_size
         self._decoder_out_size = decoder_out_size
         self._state_size = state_size
         self._switch_kernel = None
         self._switch_bias = None
-        self._emit_kernel = None
-        self._emit_bias = None
+        self._shortlist_kernel = None
+        self._shortlist_bias = None
 
     def _build(self, *args, **kwargs):
         self._switch_kernel = tf.get_variable(
@@ -410,19 +416,19 @@ class PointingSoftmaxOutput(Layer):
             name=self._SWITCH_BIAS_NAME,
             shape=[1],
             trainable=self.trainable)
-        self._emit_kernel = tf.get_variable(
-            self._EMIT_KERNEL_NAME,
-            shape=[self._decoder_out_size, self._emission_size],
+        self._shortlist_kernel = tf.get_variable(
+            self._SHORTLIST_KERNEL_NAME,
+            shape=[self._decoder_out_size, self._shortlist_size],
             trainable=self.trainable)
-        self._emit_bias = tf.get_variable(
-            name=self._EMIT_BIAS_NAME,
-            shape=[self._emission_size],
+        self._shortlist_bias = tf.get_variable(
+            name=self._SHORTLIST_BIAS_NAME,
+            shape=[self._shortlist_size],
             trainable=self.trainable)
 
     @property
-    def emission_size(self):
-        """The emission size."""
-        return self._emission_size
+    def shortlist_size(self):
+        """The size of the output shortlist."""
+        return self._shortlist_size
 
     @property
     def decoder_out_size(self):
@@ -445,33 +451,35 @@ class PointingSoftmaxOutput(Layer):
           a 2D tesor of size [batch_size, self.emission_size + pointing_size]
           of tf.float32 zeros, represernting the default first output tensor of the layer.
         """
-        shape = tf.stack([batch_size, self._emission_size + pointing_size])
+        shape = tf.stack([batch_size, self._shortlist_size + pointing_size])
         return tf.zeros(shape, dtype=tf.float32)
 
-    def _call(self, decoder_out, pointing_scores, attention_context):  # pylint: disable=I0011,W0221
+    def _call(self, decoder_out, location_scores, attention_context):  # pylint: disable=I0011,W0221
         switch_in = tf.concat([decoder_out, attention_context], axis=1)
-        switch = tf.nn.sigmoid(tf.matmul(switch_in, self._switch_kernel) + self._switch_bias)
-        emission = tf.nn.sigmoid(tf.matmul(decoder_out, self._emit_kernel) + self._emit_bias)
-        output = tf.concat([switch * emission, (1 - switch) * pointing_scores], axis=1)
+        switch = tf.matmul(switch_in, self._switch_kernel) + self._switch_bias
+        switch = tf.nn.sigmoid(switch)
+        shortlist = tf.matmul(decoder_out, self._shortlist_kernel) + self._shortlist_bias
+        shortlist = tf.nn.sigmoid(shortlist)
+        output = tf.concat([switch * shortlist, (1 - switch) * location_scores], axis=1)
         return output
 
-    def call(self, decoder_out, pointing_scores, attention_context):  # pylint: disable=I0011,W0221
+    def call(self, decoder_out, location_softmax, attention_context):  # pylint: disable=I0011,W0221
         """Computes the output of a pointing decoder.
 
         Arguments:
           decoder_out: a 2D tensor of shape [batch_size, decoder_output_size]
             representing the output of the recurrent decoder.
-          pointing_scores: a 2D tensor of shape [batch_size, timesteps] representing
-            the pointing scores over the attention states.
+          location_softmax: a 2D tensor of shape [batch_size, timesteps] representing
+            a probability distribution over the attention states.
           attention_context: a 2D tensor of shape [batch_size, state_size]
             representing the attention context vector over the attention states.
 
         Returns:
           a 2D tensor of shape [batch_size, shortlist_size + timesteps] representing
-          a probability distribution over the output shortlist **and** the input states.
+          a probability distribution over the output shortlist **and** the attention states.
         """
         return super(PointingSoftmaxOutput, self).__call__(
-            decoder_out, pointing_scores, attention_context)
+            decoder_out, location_softmax, attention_context)
 
 
 class PointingDecoder(Layer):
@@ -479,15 +487,16 @@ class PointingDecoder(Layer):
 
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
-    def __init__(self, decoder_cell, sequence_length,
+    def __init__(self, decoder_cell, 
                  pointing_softmax, pointing_softmax_output,
+                 out_sequence_length,
                  emit_out_init=None, feedback_size=None,
                  cell_out_init=None, cell_state_init=None,
                  parallel_iterations=None, swap_memory=False,
                  trainable=True, scope='PointingDecoder'):
         super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
         self._decoder_cell = decoder_cell
-        self._sequence_length = sequence_length
+        self._sequence_length = out_sequence_length
         self._pointing_softmax = pointing_softmax
         self._pointing_softmax_output = pointing_softmax_output
         self._emit_out_init = emit_out_init
