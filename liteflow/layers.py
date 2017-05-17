@@ -1,7 +1,7 @@
 """Base contract for lite layers implementation."""
 
 import abc
-
+import functools
 import tensorflow as tf
 
 from liteflow import ops
@@ -246,7 +246,7 @@ class BahdanauAttention(Layer):
           states: 3-D Tensor of shape [batch, timesteps, state] representing the
             states on which the attention scores will be computed; the third dimension
             of the tensor must be statically determined.
-          size: int representing the inner attention size;
+          inner_size: int representing the inner attention size;
           trainable: if True, variables will be trainable;
           scope: None, str or tf.VariableScope representing the variable scope
             of the layer which will be used to create all the needed variables.
@@ -386,7 +386,7 @@ class LocationSoftmax(Layer):
             self._attention.build()
 
     def _call(self, query):  # pylint: disable=I0011,W0221
-        activations = self._attention.apply(query)
+        activations = self._attention(query)
         maxlen = utils.get_dimension(activations, -1)
         if self._sequence_length is not None:
             mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
@@ -454,6 +454,15 @@ class PointingSoftmaxOutput(Layer):
 
     def __init__(self, shortlist_size, decoder_out_size, state_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
+        """Initializes a new instance.
+
+        Arguments:
+          shorlist_size: a `int` representing the dimension of the known output vocabulary.
+          decoder_out_size: a `int` representing the output size of the recoder.
+          state_size: a `int` representing the size of the attention states.
+          trainable: if `True`, the created variables will be trainable.
+          scope: VariableScope for the created subgraph;.
+        """
         super(PointingSoftmaxOutput, self).__init__(trainable=trainable, scope=scope)
         self._shortlist_size = shortlist_size
         self._decoder_out_size = decoder_out_size
@@ -548,19 +557,49 @@ class PointingDecoder(Layer):
     the propert symbol can be copied from the input.
     """
 
-    # TODO(petrux): check dimensions (if statically defined).
     def __init__(self, decoder_cell,
-                 pointing_softmax, pointing_softmax_output,
+                 location_softmax, pointing_softmax_output,
                  out_sequence_length,
                  emit_out_feedback_fit=None,
                  emit_out_init=None,
                  cell_out_init=None, cell_state_init=None,
                  parallel_iterations=None, swap_memory=False,
                  trainable=True, scope='PointingDecoder'):
+        """Initialize a new instance.
+
+        Arguments:
+          decoder_cell: a cell used as a decoder, implementing `tf.contrib.rnn.RNNCell`.
+          location_softmax: a LocationSoftmax instance.
+          pointing_softmax_output: a PointingSoftmaxOutput instance
+          out_sequence_length: a 1D tensor of shape [batch_size] with the actual length
+            of each output (i.e. decoded) sequence in the batch.
+          emit_out_feedback_fit: since the output can have different dimension for
+            each batch, this function should process the output and fit it to a fixed
+            length so that it can be fed back to the decoder cell, concatenated with the
+            previous output and the attention context. If None, the output is fed
+            as-is but this scenario will surely work with fixed length input states.
+          emit_out_init: a 2D tensor of shape [batch_size, shortlist_size + timesteps]
+            representing the initialization value for the output.
+          cell_out_init: a 2D tensor of shape [batch_size, decoder_out_size]
+            representing the initialization value for the decoder output.
+          cell_state_init: a 2D tensor of shape [batch_size, decoder_cell_state]
+            representing the initialization value for the decoder cell state.
+          parallel_iterations: (Default: 32). The number of iterations to run in parallel.
+            Those operations which do not have any temporal dependency and can be run in
+            parallel, will be. This parameter trades off time for space. Values >> 1 use more
+            memory but take less time, while smaller values use less memory but computations
+            take longer.
+          swap_memory: Transparently swap the tensors produced in forward inference but needed
+            for back prop from GPU to CPU. This allows training RNNs which would typically not
+            fit on a single GPU, with very minimal (or no) performance penalty.
+          trainable: if `True`, the created variables will be trainable.
+          scope: VariableScope for the created subgraph;.
+        """
+
         super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
         self._decoder_cell = decoder_cell
         self._sequence_length = out_sequence_length
-        self._pointing_softmax = pointing_softmax
+        self._location_softmax = location_softmax
         self._pointing_softmax_output = pointing_softmax_output
         self._emit_out_init = emit_out_init
         self._emit_out_feedback_fit = emit_out_feedback_fit
@@ -587,12 +626,12 @@ class PointingDecoder(Layer):
         return self._cell_state_init
 
     def _build(self, *args, **kwargs):
-        if not self._pointing_softmax.built:
-            self._pointing_softmax.build()
+        if not self._location_softmax.built:
+            self._location_softmax.build()
         if not self._pointing_softmax_output.built:
             self._pointing_softmax_output.build()
 
-        states = self._pointing_softmax.attention.states
+        states = self._location_softmax.attention.states
         self._batch_size = utils.get_dimension(states, 0)
         self._pointing_size = utils.get_dimension(states, 1)
         if self._emit_out_init is None:
@@ -604,7 +643,8 @@ class PointingDecoder(Layer):
             self._cell_out_init = tf.zeros(cell_out_shape)
 
         if self._cell_state_init is None:
-            self._cell_state_init = self._decoder_cell.zero_state(self._batch_size)
+            self._cell_state_init = self._decoder_cell.zero_state(
+                self._batch_size, dtype=tf.float32)
 
         if self._emit_out_feedback_fit is None:
             self._emit_out_feedback_fit = lambda tensor: tensor
@@ -618,11 +658,6 @@ class PointingDecoder(Layer):
             elements_finished = tf.ones([batch_dim], tf.bool)
         else:
             elements_finished = (time >= self._sequence_length)
-
-        # Unpack the loop state: it must contain two 2D tensors
-        # representing the pointing softmax and the attention context
-        # respectively for the given batch.
-        pointing_softmax, attention_context = loop_state
 
         # Declare and initialize to `None` all the return arguments.
         next_cell_input = None
@@ -639,13 +674,14 @@ class PointingDecoder(Layer):
             next_cell_state = self._cell_state_init
             emit_output = self._emit_out_init
         else:
+            pointing_softmax, attention_context = loop_state
             next_cell_state = cell_state
             emit_output = self._pointing_softmax_output(
                 cell_output, pointing_softmax, attention_context)
 
         # Evaluate the pointing scores and the attention context for
         # the next step and pack them into the loop state.
-        pointing_softmax, attention_context = self._pointing_softmax(cell_output)
+        pointing_softmax, attention_context = self._location_softmax(cell_output)
         next_loop_state = (pointing_softmax, attention_context)
 
         # Fit the output to be fed back.
@@ -680,3 +716,78 @@ class PointingDecoder(Layer):
           representing the decoder output.
         """
         return super(PointingDecoder, self).__call__()
+
+
+def pointing_decoder(attention_states,
+                     attention_inner_size,
+                     decoder_cell,
+                     shortlist_size,
+                     attention_sequence_length=None,
+                     output_sequence_length=None,
+                     emit_out_feedback_size=None,
+                     parallel_iterations=None,
+                     swap_memory=False,
+                     trainable=True):
+    """Creates a PointingDecoder layer.
+
+    Arguments:
+      attention_states: a 3D Tensor of shape [batch_size, timesteps, state_size]
+        representing the states on which the attention scores will be computed;
+        the third dimension of the tensor must be statically determined.
+      inner_size: `int` representing the inner attention size of a BahdanauAttention.
+      decoder_cell: a cell used as a decoder, implementing `tf.contrib.rnn.RNNCell`.
+      shortlist_size:
+      attention_sequence_length: a 1D Tensor of shape [batch_size] where each element
+        represent the number of actual meaningful elements in each sequence of the
+        attention states.
+      output_sequence_length: a 1D Tensor of shape [batch_size] where each element
+        represent the number of actual meaningful elements in each sequence of the
+        output tensor.
+      emit_out_feedback_fit: since the output can have different dimension for
+        each batch, this function should process the output and fit it to a fixed
+        length so that it can be fed back to the decoder cell, concatenated with the
+        previous output and the attention context. If None, the output is fed
+        as-is but this scenario will surely work with fixed length input states.
+      parallel_iterations: (Default: 32). The number of iterations to run in parallel.
+        Those operations which do not have any temporal dependency and can be run in
+        parallel, will be. This parameter trades off time for space. Values >> 1 use more
+        memory but take less time, while smaller values use less memory but computations
+        take longer.
+      swap_memory: Transparently swap the tensors produced in forward inference but needed
+        for back prop from GPU to CPU. This allows training RNNs which would typically not
+        fit on a single GPU, with very minimal (or no) performance penalty.
+        trainable: if `True`, the created variables will be trainable.
+      trainable: if True, variables will be trainable;
+
+    Returns:
+      a new instance of the PointingDecoder layer.
+    """
+
+    attention = BahdanauAttention(
+        states=attention_states,
+        inner_size=attention_inner_size,
+        trainable=trainable)
+
+    location = LocationSoftmax(
+        attention=attention,
+        sequence_length=attention_sequence_length)
+
+    state_size = attention_states.shape[-1].value
+    output = PointingSoftmaxOutput(
+        shortlist_size=shortlist_size,
+        decoder_out_size=decoder_cell.output_size,
+        state_size=state_size,
+        trainable=trainable)
+
+    fit = None
+    if emit_out_feedback_size is not None:
+        fit = functools.partial(ops.fit, width=emit_out_feedback_size)
+    decoder = PointingDecoder(
+        decoder_cell=decoder_cell,
+        location_softmax=location,
+        out_sequence_length=output_sequence_length,
+        pointing_softmax_output=output,
+        emit_out_feedback_fit=fit,
+        parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory)
+    return decoder
