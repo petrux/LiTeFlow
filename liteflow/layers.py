@@ -487,7 +487,7 @@ class PointingDecoder(Layer):
 
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
-    def __init__(self, decoder_cell, 
+    def __init__(self, decoder_cell,
                  pointing_softmax, pointing_softmax_output,
                  out_sequence_length,
                  emit_out_init=None, feedback_size=None,
