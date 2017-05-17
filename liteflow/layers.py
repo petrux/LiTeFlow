@@ -337,9 +337,36 @@ class BahdanauAttention(Layer):
 
 
 class LocationSoftmax(Layer):
-    """Implements a PointingSoftmax over a set of attention states."""
+    """Implements a PointingSoftmax over a set of attention states.
 
-    def __init__(self, attention, sequence_length=None, scope='PointingSoftmax'):
+    The logics implemented in this class is described in this paper by Caglar
+    Gulcehre et al., https://arxiv.org/abs/1603.08148
+
+    Given a set of attention states as a 3D tensor of shape [batch_size, timesteps,
+    state_size] and an attention mechanism over them, this layer returns a 2D tensor of
+    shape [batch_size, timesteps] where the i-th element of the batch represents a
+    probability distribution over the states of the i-th element of the input batch.
+    Since the sequences in the input batch can have actual different lengths, such
+    distributions are computed only over the actual elements.
+
+    An invocation to this layer, given a 2D tensor, called `query`, of shape
+    [batch_size, query_size], returns a tuple of two tensors:
+      `location_softmax` is a 2D tensor of shape [batch_size, timesteps] that
+        represent a probability distribution over the attention states;
+      `attention_context` is a 2D tesnor of shape [batch_size, state_size] that
+        represent the attention vector for the query over the attention states where
+        the `location_softmax` tensor has been used as the coeffiecient vector.
+    """
+
+    def __init__(self, attention, sequence_length=None, scope='LocationSoftmax'):
+        """Initialize a LocationSoftmax layer.
+
+        Arguments:
+          attention: an attention layer (such as BahdanauAttention).
+          sequente_length: a `1D` Tensor of shape [batch_size] where each element
+            represent the number of actual meaningful elements in each sequence
+            of the attention states.
+        """
         super(LocationSoftmax, self).__init__(trainable=attention.trainable, scope=scope)
         self._attention = attention
         self._sequence_length = sequence_length
@@ -361,7 +388,10 @@ class LocationSoftmax(Layer):
     def _call(self, query):  # pylint: disable=I0011,W0221
         activations = self._attention.apply(query)
         maxlen = utils.get_dimension(activations, -1)
-        mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
+        if self._sequence_length is not None:
+            mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
+        else:
+            mask = None
         weights = ops.softmax(activations, mask)
         eweights = tf.expand_dims(weights, axis=2)
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
@@ -383,13 +413,39 @@ class LocationSoftmax(Layer):
             attention_context: a 2D tenros of shape [batch_size, state_size] where
               `state_size` is the size of the attention states (the 3rd dimension);
               such tensor is intended to represent the attention context vector over
-              the attention states.
+              the attention states  where the `location_softmax` tensor has been used
+              as the coeffiecient vector.
         """
         return super(LocationSoftmax, self).__call__(self, query)
 
 
 class PointingSoftmaxOutput(Layer):
-    """Implements the output layer for a PointingSoftmax."""
+    """Implements the output layer for a PointingDecoder.
+
+    The logics implemented in this class is described in this paper by Caglar
+    Gulcehre et al., https://arxiv.org/abs/1603.
+
+    An invocation to this layer acceprs as arguments:
+      decoder_out: a 2D tensor of shape [batch_size, decoder_out_size] representing
+        the output of some decoding operation
+      location_softmax: a 2D tensor of shape [batch_size, timesteps] that represents the
+        location softmax (i.e. a probability distribution) over a set of attention states
+      attention_context: a 2D tensor of shape [batch_size, state_size] representing the
+      attention context vector for `decoder_out` w.r.t. to a set of input states calculated
+      with the `location_softmax` as coeffiecients
+
+    and returns a 2D tensor of shape [batch_size, shortlist_size + timesteps] where
+    `shortlist_size` is the dimension of the outout vocabulary of the network and
+    `timesteps` is the number of states, or the length, of the attention states.
+    The output tensor is a probability distribution over a set of items represented
+    by the elements in the shortlist (the first part) or some item from the input
+    sequence, based on the position of the top scoring element in the second part
+    of the outout vector. It means that:
+      1. if the argmax of the output vector is in the interval [0, shortlist-1],
+         then outout symbol will be taken from the shortlist
+      2. otherwise, it is in the interval [shortlist, shortlist + timesteps - 1]
+         and it will be considered a "position" in the [0, timesteps - 1] interval.
+    """
 
     _SWITCH_KERNEL_NAME = 'SwitchKernel'
     _SWITCH_BIAS_NAME = 'SwitchBias'
@@ -471,8 +527,9 @@ class PointingSoftmaxOutput(Layer):
             representing the output of the recurrent decoder.
           location_softmax: a 2D tensor of shape [batch_size, timesteps] representing
             a probability distribution over the attention states.
-          attention_context: a 2D tensor of shape [batch_size, state_size]
-            representing the attention context vector over the attention states.
+          attention_context: a 2D tensor of shape [batch_size, state_size] representing
+            the attention context vector over the attention states for `decoder_outout`
+            calculated with `location_softmax` as the coefficients.
 
         Returns:
           a 2D tensor of shape [batch_size, shortlist_size + timesteps] representing
@@ -483,7 +540,13 @@ class PointingSoftmaxOutput(Layer):
 
 
 class PointingDecoder(Layer):
-    """PointingDecoder layer."""
+    """PointingDecoder layer.
+
+    This class implements a decoder that, in a sequence-to-sequence scenario
+    has the capability of gnerating symbols from a shortlist (i.e. an output
+    vocabulary) or pointing a position within a sequence of elements so that
+    the propert symbol can be copied from the input.
+    """
 
     # TODO(petrux): check dimensions (if statically defined).
     def __init__(self, decoder_cell,
@@ -607,8 +670,13 @@ class PointingDecoder(Layer):
     def call(self):    # pylint: disable=I0011,W0221
         """Decode using pointing softmax.
 
+        Decode a 3D tensor os shape [batch_size, length, shortlist_size + timesteps].
+        Each outout vector will represent a probability distribution over a set of
+        symbols representing a shortlist of symbols and a list of positions over
+        the a set of attention states.
+
         Returns:
-          a 3D tensor of shape [batch_size, length, output_size] representing
-          the decoder output.
+          a 3D tensor of shape [batch_size, length, shortlist_size + timesteps]
+          representing the decoder output.
         """
         return super(PointingDecoder, self).__call__()
