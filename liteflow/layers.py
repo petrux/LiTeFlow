@@ -479,7 +479,6 @@ class PointingDecoder(Layer):
 
     # TODO(petrux): check dimensions (if statically defined).
     # TODO(petrux): the feedback fit function should be injected.
-    # TODO(petrux): deal with no sequence length set.
     def __init__(self, decoder_cell, sequence_length,
                  pointing_softmax, pointing_softmax_output,
                  emit_out_init=None, feedback_size=None,
@@ -539,7 +538,11 @@ class PointingDecoder(Layer):
 
         # Determin how many sequences are actually over and define
         # a flag to check if all of them have been fully scanned.
-        elements_finished = (time >= self._sequence_length)
+        if self._sequence_length is None:
+            batch_dim = utils.get_dimension(cell_output, 0)
+            elements_finished = tf.ones([batch_dim], tf.bool)
+        else:
+            elements_finished = (time >= self._sequence_length)
 
         # Unpack the loop state: it must contain two 2D tensors
         # representing the pointing softmax and the attention context
