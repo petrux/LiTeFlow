@@ -12,7 +12,6 @@ from liteflow import input as linput
 def _timestamp():
     frmt = "%Y-%m-%d--%H-%M-%S.%f"
     stamp = datetime.datetime.now().strftime(frmt)
-    print 'STAMP: ' + stamp
     return stamp
 
 
