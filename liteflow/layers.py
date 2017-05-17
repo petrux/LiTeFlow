@@ -486,11 +486,11 @@ class PointingDecoder(Layer):
     """PointingDecoder layer."""
 
     # TODO(petrux): check dimensions (if statically defined).
-    # TODO(petrux): the feedback fit function should be injected.
     def __init__(self, decoder_cell,
                  pointing_softmax, pointing_softmax_output,
                  out_sequence_length,
-                 emit_out_init=None, feedback_size=None,
+                 emit_out_feedback_fit=None,
+                 emit_out_init=None,
                  cell_out_init=None, cell_state_init=None,
                  parallel_iterations=None, swap_memory=False,
                  trainable=True, scope='PointingDecoder'):
@@ -500,7 +500,7 @@ class PointingDecoder(Layer):
         self._pointing_softmax = pointing_softmax
         self._pointing_softmax_output = pointing_softmax_output
         self._emit_out_init = emit_out_init
-        self._feedback_size = feedback_size
+        self._emit_out_feedback_fit = emit_out_feedback_fit
         self._cell_out_init = cell_out_init
         self._cell_state_init = cell_state_init
         self._parallel_iterations = parallel_iterations
@@ -543,6 +543,9 @@ class PointingDecoder(Layer):
         if self._cell_state_init is None:
             self._cell_state_init = self._decoder_cell.zero_state(self._batch_size)
 
+        if self._emit_out_feedback_fit is None:
+            self._emit_out_feedback_fit = lambda tensor: tensor
+
     def _loop_fn(self, time, cell_output, cell_state, loop_state):
 
         # Determin how many sequences are actually over and define
@@ -582,13 +585,8 @@ class PointingDecoder(Layer):
         pointing_softmax, attention_context = self._pointing_softmax(cell_output)
         next_loop_state = (pointing_softmax, attention_context)
 
-        # If a feedback_size has been set, the emit_output is fit to that
-        # limit (padded or trimmed) in order to be fed back to the decoder
-        # cell (that must have a constant input size).
-        if self._feedback_size:
-            feedback = ops.fit(emit_output, self._feedback_size)
-        else:
-            feedback = emit_output
+        # Fit the output to be fed back.
+        feedback = self._emit_out_feedback_fit(emit_output)
 
         # Pack the next input for the decoder cell. Such input is
         # the concatenation of the current cell output (since it is

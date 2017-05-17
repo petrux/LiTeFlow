@@ -384,11 +384,15 @@ class TestPointingDecoder(tf.test.TestCase):
         pointing_softmax_output = mock.Mock()
         pointing_softmax_output.zero_output.side_effect = [emit_out_init]
 
+        emit_out_feedback_fit = mock.Mock()
+        emit_out_feedback_fit.side_effect = lambda x: x
+
         layer = layers.PointingDecoder(
             decoder_cell=decoder_cell,
-            out_sequence_length=out_sequence_length,
             pointing_softmax=pointing_softmax,
-            pointing_softmax_output=pointing_softmax_output)
+            pointing_softmax_output=pointing_softmax_output,
+            out_sequence_length=out_sequence_length,
+            emit_out_feedback_fit=emit_out_feedback_fit)
         layer.build()
 
         results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
@@ -403,6 +407,7 @@ class TestPointingDecoder(tf.test.TestCase):
         self.assertEqual(emit_output, emit_out_init)
         self.assertEqual(next_pointing_scores, location_softmax)
         self.assertEqual(next_attention_context, attention_context)
+        emit_out_feedback_fit.assert_called_once_with(emit_output)
 
         # Data for feeding placeholders and expected values.
         data = np.ones((batch_size, timesteps, state_size))
@@ -482,11 +487,15 @@ class TestPointingDecoder(tf.test.TestCase):
         pointing_softmax_output.zero_output.side_effect = [emit_out_init]
         pointing_softmax_output.side_effect = [emit_out]
 
+        emit_out_feedback_fit = mock.Mock()
+        emit_out_feedback_fit.side_effect = lambda x: x
+
         layer = layers.PointingDecoder(
             decoder_cell=decoder_cell,
             out_sequence_length=out_sequence_length,
             pointing_softmax=pointing_softmax,
-            pointing_softmax_output=pointing_softmax_output)
+            pointing_softmax_output=pointing_softmax_output,
+            emit_out_feedback_fit=emit_out_feedback_fit)
         layer.build()
 
         results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
@@ -495,6 +504,7 @@ class TestPointingDecoder(tf.test.TestCase):
         self.assertEqual(cell_state, results[2])
         self.assertEqual(emit_out, results[3])
         self.assertEqual(next_loop_state, results[4])
+        emit_out_feedback_fit.assert_called_once_with(emit_out)
 
         elements_finished = results[0]
         next_cell_input = results[1]
