@@ -1,5 +1,9 @@
 """Test the base class of the layers hierarchy."""
 
+# Disable pylint warning about too many statements
+# and local variables since we are dealing with tests.
+# pylint: disable=R0914, R0915
+
 import mock
 import tensorflow as tf
 
