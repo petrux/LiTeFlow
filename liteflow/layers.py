@@ -43,32 +43,25 @@ class Layer(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, trainable=True, scope=None):
+    def __init__(self, trainable=True, name=None, **kwargs):
         """Initliazes a new Layer instance.
 
         Arguments:
           trainable: a boolean flag indicating if the variables created bytearray
             the layer should be considered as trainable.
-          scope: the scope to be used in the layer. Must be `None`,
-            `str` or `tf.VariableScope`.
-
-        Raises:
-          TypeError: if the `scope` argument is not `None`, `str` or `tf.VariableScope`.
-
-        The scope of a layer does not have to be set in the initialisation phase. It can
-        be set in an explicit call of the `build()` or the `__call__()` methods. It can also
-        never be explicitly set. In this case, the layer will use a default scope. The default
-        behaviour is to use a scope named with the `self.name` property value.
         """
         self._trainable = trainable
-        self._built = False
+        self._name = name or self.__class__.__name__
         self._scope = None
-        self._name = self.__class__.__name__
+        self._reuse = False
         self._variables = []
 
+        scope = kwargs.get('_scope')
         if scope is not None:
             self._scope = utils.as_scope(scope)
-            self._name = self._scope.name
+        reuse = kwargs.get('_reuse')
+        if reuse:
+            self._reuse = True
 
     @property
     def name(self):
@@ -77,8 +70,18 @@ class Layer(object):
 
     @property
     def scope(self):
-        """The variable scope bound to the layer."""
-        return self._scope
+        """The name of variable scope bound to the layer.
+
+        Raises:
+          ValueError: if the layer has not be called yet.
+        """
+        if not self._scope:
+            raise ValueError('No name available for layer scope because the layer "' +
+                             self.name + '" has not been used yet. The scope name ' +
+                             ' is determined the first time the layer instance is ' +
+                             'called. You must therefore call the layer before ' +
+                             'querying `scope`.')
+        return self._scope.name
 
     @property
     def trainable(self):
@@ -90,87 +93,30 @@ class Layer(object):
         """Return all the variables used by the layer."""
         return self._variables
 
-    @property
-    def built(self):
-        """True if the layer has already been built."""
-        return self._built
-
     def _default_scope(self):
-
         """Returns the default scope."""
         return utils.as_scope(self._name)
 
     def _set_scope(self, scope):
         """Set the given scope as the scope of the layer.
 
-        Set the scope for the layer, that will be accessible through the
-        `self.scope` property.
+        If not already present, set the scope for the layer. The name of such scope
+         will be accessible through the `self.scope` property.
 
         Argsuments:
           scope: the given scope, of type `str` of `tf.VariableScope`. If `None`,
             the one returned from the `self._default_scope()` method will be used.
         """
         if self._scope is None:
-            if scope is None:
-                self._scope = self._default_scope()
+            if self._reuse:
+                self._scope = next(tf.variable_scope(  # pylint: disable=I0011,E1101
+                    scope if scope is not None else self._default_scope()).gen)
             else:
-                self._scope = utils.as_scope(scope)
-            return
-        if scope is not None:
-            tf.logging.warning(
-                """Trying to set the scope %s while"""
-                """ %s has already been set.""",
-                utils.as_scope(scope).name, self._scope.name)
+                self._scope = next(tf.variable_scope(  # pylint: disable=I0011,E1101
+                    scope, default_name=self._default_scope()).gen)
 
     @abc.abstractmethod
-    def _build(self, *args, **kwargs):
-        """Build the layer.
-
-        Remarks:
-          this is an abstract method that must be implemented
-          by concrete subclasses.
-        """
-        raise NotImplementedError(
-            'This method must be implemented in subclasses.')
-
-    def build(self, *args, **kwargs):
-        """Build the layer.
-
-        Build the inner state of the layer, with all the variables that
-        will be used by the layer itself. Wraps `self._build()` applying
-        pre- and post-processing.
-
-        Arguments:
-          *args: positional arguments to be passed to `self._build()`.
-          **kwargs: keyword arguments to be passed to `self._build()`.
-            **Note**, the kwarg `scope` is reserved for use by the layer.
-
-        Raises:
-          RuntimeError: if the layer has already been built, i.e. if `self.built`
-            is equals to `True`.
-
-        NOTA BENE: this method works like this:
-        1. setup the scope (if not set yet);
-        2. within the scope context, invoke the `self._build()` template method;
-        3. set the `self.built` property to `True`.
-
-        When subclassing the `Layer` class, you shall provide an implementation of
-        the `Layer._build()` method so that all the other boilerplate stuff (namely
-        item 1. and 3. from the above list) are performed by the `Layer.build()`
-        outer method.
-        """
-        if self._built:
-            raise RuntimeError(
-                'The layer %s has already been built.' %
-                self._name)
-
-        self._set_scope(kwargs.pop('scope', None))
-        with tf.variable_scope(self._scope) as _:
-            self._build(*args, **kwargs)
-        self._built = True
-
-    @abc.abstractmethod
-    def _call(self, *args, **kwargs):
+    def _call_helper(self, *args, **kwargs):
         """Run the layer logic.
 
         NOTA BENE: this is an abstract method that must be implemented
@@ -183,13 +129,13 @@ class Layer(object):
         """Execute the layer logics, applying pre- and post-processing steps.
 
         The layer logic is supposed to happen in the concrete implementation
-        of the abstract method `_call()`. This method executes some pre- and
+        of the abstract method `_call_helper()`. This method executes some pre- and
         post-processing. We can sketch the internal workflow of the method as:
-        1. get the scope (as the `scope` kwarg)
-        2. if the layer has not been built, build it, otherwise just set
-           set the scope so that variables are reused.
-        3. invoke the `_call()` method with the very same arguments (with the only
+        1. get the scope (as the `scope` kwarg) and check if variables should be reused
+        2. invoke the `_call_helper()` method with the very same arguments (with the only
            exception of the `scope` argument, if present).
+        3. set the future scope instances to be reused.
+        4. return the result of invokation of `_call_helper()` (from 2).
 
         Arguments:
           *args: additional positional arguments.
@@ -197,25 +143,15 @@ class Layer(object):
             keyword argument `scope` is reserved for use by the layer.
 
         Returns:
-          a tuple of output tensors.
+          a tuple of output tensors (or `None`).
         """
         self._set_scope(kwargs.pop('scope', None))
         with tf.variable_scope(self._scope) as scope:
-            if not self._built:
-                self._build()
-                self._built = True
-            else:
+            if self._reuse:
                 scope.reuse_variables()
-            return self._call(*args, **kwargs)
-
-    def call(self, *args, **kwargs):
-        """Wraps the `__call__()` method.
-
-        NOTA BENE: The documentation of this method should be rewritten
-        in the concrete subclasses.
-        """
-        return self.__call__(*args, **kwargs)
-
+            result = self._call_helper(*args, **kwargs)
+            self._reuse = True
+        return result
 
 class BahdanauAttention(Layer):
     """Attention mechanism as in Bahdanau et al. 2015.
