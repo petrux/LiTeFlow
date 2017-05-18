@@ -43,32 +43,25 @@ class Layer(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, trainable=True, scope=None):
+    def __init__(self, trainable=True, name=None, **kwargs):
         """Initliazes a new Layer instance.
 
         Arguments:
           trainable: a boolean flag indicating if the variables created bytearray
             the layer should be considered as trainable.
-          scope: the scope to be used in the layer. Must be `None`,
-            `str` or `tf.VariableScope`.
-
-        Raises:
-          TypeError: if the `scope` argument is not `None`, `str` or `tf.VariableScope`.
-
-        The scope of a layer does not have to be set in the initialisation phase. It can
-        be set in an explicit call of the `build()` or the `__call__()` methods. It can also
-        never be explicitly set. In this case, the layer will use a default scope. The default
-        behaviour is to use a scope named with the `self.name` property value.
         """
         self._trainable = trainable
-        self._built = False
+        self._name = name or self.__class__.__name__
         self._scope = None
-        self._name = self.__class__.__name__
+        self._reuse = False
         self._variables = []
 
+        scope = kwargs.get('_scope')
         if scope is not None:
             self._scope = utils.as_scope(scope)
-            self._name = self._scope.name
+        reuse = kwargs.get('_reuse')
+        if reuse:
+            self._reuse = True
 
     @property
     def name(self):
@@ -77,100 +70,48 @@ class Layer(object):
 
     @property
     def scope(self):
-        """The variable scope bound to the layer."""
-        return self._scope
+        """The name of variable scope bound to the layer.
+
+        Raises:
+          ValueError: if the layer has not be called yet.
+        """
+        if not self._scope:
+            raise ValueError('No name available for layer scope because the layer "' +
+                             self.name + '" has not been used yet. The scope name ' +
+                             ' is determined the first time the layer instance is ' +
+                             'called. You must therefore call the layer before ' +
+                             'querying `scope`.')
+        return self._scope.name
 
     @property
     def trainable(self):
         """True if the layer is trainable."""
         return self._trainable
 
-    @property
-    def variables(self):
-        """Return all the variables used by the layer."""
-        return self._variables
-
-    @property
-    def built(self):
-        """True if the layer has already been built."""
-        return self._built
-
     def _default_scope(self):
-
         """Returns the default scope."""
         return utils.as_scope(self._name)
 
     def _set_scope(self, scope):
         """Set the given scope as the scope of the layer.
 
-        Set the scope for the layer, that will be accessible through the
-        `self.scope` property.
+        If not already present, set the scope for the layer. The name of such scope
+         will be accessible through the `self.scope` property.
 
         Argsuments:
           scope: the given scope, of type `str` of `tf.VariableScope`. If `None`,
             the one returned from the `self._default_scope()` method will be used.
         """
         if self._scope is None:
-            if scope is None:
-                self._scope = self._default_scope()
+            if self._reuse:
+                self._scope = next(tf.variable_scope(  # pylint: disable=I0011,E1101
+                    scope if scope is not None else self._default_scope()).gen)
             else:
-                self._scope = utils.as_scope(scope)
-            return
-        if scope is not None:
-            tf.logging.warning(
-                """Trying to set the scope %s while"""
-                """ %s has already been set.""",
-                utils.as_scope(scope).name, self._scope.name)
+                self._scope = next(tf.variable_scope(  # pylint: disable=I0011,E1101
+                    scope, default_name=self._default_scope().name).gen)
 
     @abc.abstractmethod
-    def _build(self, *args, **kwargs):
-        """Build the layer.
-
-        Remarks:
-          this is an abstract method that must be implemented
-          by concrete subclasses.
-        """
-        raise NotImplementedError(
-            'This method must be implemented in subclasses.')
-
-    def build(self, *args, **kwargs):
-        """Build the layer.
-
-        Build the inner state of the layer, with all the variables that
-        will be used by the layer itself. Wraps `self._build()` applying
-        pre- and post-processing.
-
-        Arguments:
-          *args: positional arguments to be passed to `self._build()`.
-          **kwargs: keyword arguments to be passed to `self._build()`.
-            **Note**, the kwarg `scope` is reserved for use by the layer.
-
-        Raises:
-          RuntimeError: if the layer has already been built, i.e. if `self.built`
-            is equals to `True`.
-
-        NOTA BENE: this method works like this:
-        1. setup the scope (if not set yet);
-        2. within the scope context, invoke the `self._build()` template method;
-        3. set the `self.built` property to `True`.
-
-        When subclassing the `Layer` class, you shall provide an implementation of
-        the `Layer._build()` method so that all the other boilerplate stuff (namely
-        item 1. and 3. from the above list) are performed by the `Layer.build()`
-        outer method.
-        """
-        if self._built:
-            raise RuntimeError(
-                'The layer %s has already been built.' %
-                self._name)
-
-        self._set_scope(kwargs.pop('scope', None))
-        with tf.variable_scope(self._scope) as _:
-            self._build(*args, **kwargs)
-        self._built = True
-
-    @abc.abstractmethod
-    def _call(self, *args, **kwargs):
+    def _call_helper(self, *args, **kwargs):
         """Run the layer logic.
 
         NOTA BENE: this is an abstract method that must be implemented
@@ -183,13 +124,13 @@ class Layer(object):
         """Execute the layer logics, applying pre- and post-processing steps.
 
         The layer logic is supposed to happen in the concrete implementation
-        of the abstract method `_call()`. This method executes some pre- and
+        of the abstract method `_call_helper()`. This method executes some pre- and
         post-processing. We can sketch the internal workflow of the method as:
-        1. get the scope (as the `scope` kwarg)
-        2. if the layer has not been built, build it, otherwise just set
-           set the scope so that variables are reused.
-        3. invoke the `_call()` method with the very same arguments (with the only
+        1. get the scope (as the `scope` kwarg) and check if variables should be reused
+        2. invoke the `_call_helper()` method with the very same arguments (with the only
            exception of the `scope` argument, if present).
+        3. set the future scope instances to be reused.
+        4. return the result of invokation of `_call_helper()` (from 2).
 
         Arguments:
           *args: additional positional arguments.
@@ -197,34 +138,40 @@ class Layer(object):
             keyword argument `scope` is reserved for use by the layer.
 
         Returns:
-          a tuple of output tensors.
+          a tuple of output tensors (or `None`).
         """
         self._set_scope(kwargs.pop('scope', None))
         with tf.variable_scope(self._scope) as scope:
-            if not self._built:
-                self._build()
-                self._built = True
-            else:
+            if self._reuse:
                 scope.reuse_variables()
-            return self._call(*args, **kwargs)
-
-    def call(self, *args, **kwargs):
-        """Wraps the `__call__()` method.
-
-        NOTA BENE: The documentation of this method should be rewritten
-        in the concrete subclasses.
-        """
-        return self.__call__(*args, **kwargs)
+            result = self._call_helper(*args, **kwargs)
+            self._reuse = True
+        return result
 
 
 class BahdanauAttention(Layer):
     """Attention mechanism as in Bahdanau et al. 2015.
 
+    Calculate the attention scores over `self.states` for the given queries.
     The attention mechanism implemented in this class is the one
     described by Bahdanau et al. here: https://arxiv.org/abs/1409.0473.
     The attention states and the query are projected to the attention
     inner size, then summed together and processed with a tanh and
     finally dot producted with an attention vector.
+
+    Arguments:
+      query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
+        must be statically determined.
+      scope: a `str` or `tf.VariableScope`; if the scope has already been set in a
+        previous layer invocation, will be ignored.
+
+    Returns:
+      A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
+        dimension of the `self.states` tensor.
+
+    Raises:
+      ValueError: if the last dimension of the `query` argument
+        is not statically determined.
     """
 
     _KERNEL_NAME = 'Kernel'
@@ -286,12 +233,17 @@ class BahdanauAttention(Layer):
             self._var_op_names.add(key)
             self._variables.append(var)
 
-    def _build(self, *args, **kwargs):
-        """Implement the layer building logic."""
+    def _call_helper(self, query):    # pylint: disable=I0011,W0221
+        query_size = query.get_shape()[-1].value
+        if query_size is None:
+            raise ValueError(
+                'Last dimension of `query` must be defined, found %s'
+                % str(tf.shape(query)))
+
         batch = tf.shape(self._states)[0]
         length = tf.shape(self._states)[1]
-        shape = [batch, length, 1, self._state_size]
-        states = tf.reshape(self._states, shape=shape)
+        states_shape = [batch, length, 1, self._state_size]
+        states = tf.reshape(self._states, shape=states_shape)
         kernel = tf.get_variable(self._KERNEL_NAME,
                                  [1, 1, self._state_size, self._size],
                                  trainable=self._trainable)
@@ -299,15 +251,6 @@ class BahdanauAttention(Layer):
         self._vector = tf.get_variable(self._VECTOR_NAME,
                                        shape=[self._size],
                                        trainable=self._trainable)
-        self._add_var(kernel)
-        self._add_var(self._vector)
-
-    def _call(self, query):  # pylint: disable=I0011,W0221
-        query_size = query.get_shape()[-1].value
-        if query_size is None:
-            raise ValueError(
-                'Last dimension of `query` must be defined, found %s'
-                % str(tf.shape(query)))
 
         weights = tf.get_variable(self._WEIGHTS_NAME,
                                   shape=[query_size, self._size],
@@ -318,26 +261,12 @@ class BahdanauAttention(Layer):
         activations = tf.reduce_sum(activations, [2, 3])
         return activations
 
-    def call(self, query):  # pylint: disable=I0011,W0221
-        """Calculate the attention scores over `self.states` for the given queries.
-
-        Arguments:
-          query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
-            must be statically determined.
-
-        Returns:
-          A 2-D tensor of shape [batch, timesteps] where `timesteps` is the second
-            dimension of the `self.states` tensor.
-
-        Raises:
-          ValueError: if the last dimension of the `query` argument
-            is not statically determined.
-        """
-        return super(BahdanauAttention, self).__call__(query)
+    def __call__(self, query, scope=None):  # pylint: disable=I0011,W0221
+        return super(BahdanauAttention, self).__call__(query, scope=scope)
 
 
 class LocationSoftmax(Layer):
-    """Implements a PointingSoftmax over a set of attention states.
+    """Implements a LocationSoftmax over a set of attention states.
 
     The logics implemented in this class is described in this paper by Caglar
     Gulcehre et al., https://arxiv.org/abs/1603.08148
@@ -349,13 +278,21 @@ class LocationSoftmax(Layer):
     Since the sequences in the input batch can have actual different lengths, such
     distributions are computed only over the actual elements.
 
-    An invocation to this layer, given a 2D tensor, called `query`, of shape
-    [batch_size, query_size], returns a tuple of two tensors:
-      `location_softmax` is a 2D tensor of shape [batch_size, timesteps] that
-        represent a probability distribution over the attention states;
-      `attention_context` is a 2D tesnor of shape [batch_size, state_size] that
-        represent the attention vector for the query over the attention states where
-        the `location_softmax` tensor has been used as the coeffiecient vector.
+    Arguments:
+      query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
+        must be statically determined.
+
+    Returns:
+      a tuple of 2 tensors:
+        location_softmax: A 2D tensor of shape [batch_size, timesteps] where
+          `timesteps` is the second dimension of the attention states; such
+          tensor is intended to represent a probability distribution across
+          the states.
+        attention_context: a 2D tenros of shape [batch_size, state_size] where
+          `state_size` is the size of the attention states (the 3rd dimension);
+          such tensor is intended to represent the attention context vector over
+          the attention states  where the `location_softmax` tensor has been used
+          as the coeffiecient vector.
     """
 
     def __init__(self, attention, sequence_length=None, scope='LocationSoftmax'):
@@ -381,11 +318,7 @@ class LocationSoftmax(Layer):
         """A tensor representing the actual lenght of sequences of states in a batch."""
         return self._sequence_length
 
-    def _build(self, *args, **kwargs):
-        if not self._attention.built:
-            self._attention.build()
-
-    def _call(self, query):  # pylint: disable=I0011,W0221
+    def _call_helper(self, query):  # pylint: disable=I0011,W0221
         activations = self._attention(query)
         maxlen = utils.get_dimension(activations, -1)
         if self._sequence_length is not None:
@@ -397,26 +330,8 @@ class LocationSoftmax(Layer):
         context = tf.reduce_sum(self._attention.states * eweights, axis=1)
         return weights, context
 
-    def call(self, query):  # pylint: disable=I0011,W0221
-        """Calculate the location softmax and attention context over a set of input states.
-
-         Arguments:
-          query: a 2-D Tensor of shape [batch_size, query_size]; the last dimension
-            must be statically determined.
-
-        Returns:
-          a tuple of 2 tensors:
-            location_softmax: A 2D tensor of shape [batch_size, timesteps] where
-              `timesteps` is the second dimension of the attention states; such
-              tensor is intended to represent a probability distribution across
-              the states.
-            attention_context: a 2D tenros of shape [batch_size, state_size] where
-              `state_size` is the size of the attention states (the 3rd dimension);
-              such tensor is intended to represent the attention context vector over
-              the attention states  where the `location_softmax` tensor has been used
-              as the coeffiecient vector.
-        """
-        return super(LocationSoftmax, self).__call__(self, query)
+    def __call__(self, query, scope=None):  # pylint: disable=I0011,W0221
+        return super(LocationSoftmax, self).__call__(query, scope=scope)
 
 
 class PointingSoftmaxOutput(Layer):
@@ -425,22 +340,23 @@ class PointingSoftmaxOutput(Layer):
     The logics implemented in this class is described in this paper by Caglar
     Gulcehre et al., https://arxiv.org/abs/1603.
 
-    An invocation to this layer acceprs as arguments:
+    Arguments:
       decoder_out: a 2D tensor of shape [batch_size, decoder_out_size] representing
         the output of some decoding operation
       location_softmax: a 2D tensor of shape [batch_size, timesteps] that represents the
         location softmax (i.e. a probability distribution) over a set of attention states
       attention_context: a 2D tensor of shape [batch_size, state_size] representing the
-      attention context vector for `decoder_out` w.r.t. to a set of input states calculated
-      with the `location_softmax` as coeffiecients
+        attention context vector for `decoder_out` w.r.t. to a set of input states calculated
+        with the `location_softmax` as coeffiecients
 
-    and returns a 2D tensor of shape [batch_size, shortlist_size + timesteps] where
-    `shortlist_size` is the dimension of the outout vocabulary of the network and
-    `timesteps` is the number of states, or the length, of the attention states.
-    The output tensor is a probability distribution over a set of items represented
-    by the elements in the shortlist (the first part) or some item from the input
-    sequence, based on the position of the top scoring element in the second part
-    of the outout vector. It means that:
+    Returns:
+      and returns a 2D tensor of shape [batch_size, shortlist_size + timesteps] where
+      `shortlist_size` is the dimension of the outout vocabulary of the network and
+      `timesteps` is the number of states, or the length, of the attention states.
+      The output tensor is a probability distribution over a set of items represented
+      by the elements in the shortlist (the first part) or some item from the input
+      sequence, based on the position of the top scoring element in the second part
+      of the outout vector. It means that:
       1. if the argmax of the output vector is in the interval [0, shortlist-1],
          then outout symbol will be taken from the shortlist
       2. otherwise, it is in the interval [shortlist, shortlist + timesteps - 1]
@@ -467,28 +383,6 @@ class PointingSoftmaxOutput(Layer):
         self._shortlist_size = shortlist_size
         self._decoder_out_size = decoder_out_size
         self._state_size = state_size
-        self._switch_kernel = None
-        self._switch_bias = None
-        self._shortlist_kernel = None
-        self._shortlist_bias = None
-
-    def _build(self, *args, **kwargs):
-        self._switch_kernel = tf.get_variable(
-            name=self._SWITCH_KERNEL_NAME,
-            shape=[self._decoder_out_size + self._state_size, 1],
-            trainable=self.trainable)
-        self._switch_bias = tf.get_variable(
-            name=self._SWITCH_BIAS_NAME,
-            shape=[1],
-            trainable=self.trainable)
-        self._shortlist_kernel = tf.get_variable(
-            self._SHORTLIST_KERNEL_NAME,
-            shape=[self._decoder_out_size, self._shortlist_size],
-            trainable=self.trainable)
-        self._shortlist_bias = tf.get_variable(
-            name=self._SHORTLIST_BIAS_NAME,
-            shape=[self._shortlist_size],
-            trainable=self.trainable)
 
     @property
     def shortlist_size(self):
@@ -519,37 +413,50 @@ class PointingSoftmaxOutput(Layer):
         shape = tf.stack([batch_size, self._shortlist_size + pointing_size])
         return tf.zeros(shape, dtype=tf.float32)
 
-    def _call(self, decoder_out, location_scores, attention_context):  # pylint: disable=I0011,W0221
+    def _call_helper(self, decoder_out, location_scores, attention_context):  # pylint: disable=I0011,W0221
+
+        switch_kernel = tf.get_variable(
+            name=self._SWITCH_KERNEL_NAME,
+            shape=[self._decoder_out_size + self._state_size, 1],
+            trainable=self.trainable)
+        switch_bias = tf.get_variable(
+            name=self._SWITCH_BIAS_NAME,
+            shape=[1],
+            trainable=self.trainable)
+        shortlist_kernel = tf.get_variable(
+            self._SHORTLIST_KERNEL_NAME,
+            shape=[self._decoder_out_size, self._shortlist_size],
+            trainable=self.trainable)
+        shortlist_bias = tf.get_variable(
+            name=self._SHORTLIST_BIAS_NAME,
+            shape=[self._shortlist_size],
+            trainable=self.trainable)
+
         switch_in = tf.concat([decoder_out, attention_context], axis=1)
-        switch = tf.matmul(switch_in, self._switch_kernel) + self._switch_bias
+        switch = tf.matmul(switch_in, switch_kernel) + switch_bias
         switch = tf.nn.sigmoid(switch)
-        shortlist = tf.matmul(decoder_out, self._shortlist_kernel) + self._shortlist_bias
+        shortlist = tf.matmul(decoder_out, shortlist_kernel) + shortlist_bias
         shortlist = tf.nn.sigmoid(shortlist)
         output = tf.concat([switch * shortlist, (1 - switch) * location_scores], axis=1)
         return output
 
-    def call(self, decoder_out, location_softmax, attention_context):  # pylint: disable=I0011,W0221
-        """Computes the output of a pointing decoder.
-
-        Arguments:
-          decoder_out: a 2D tensor of shape [batch_size, decoder_output_size]
-            representing the output of the recurrent decoder.
-          location_softmax: a 2D tensor of shape [batch_size, timesteps] representing
-            a probability distribution over the attention states.
-          attention_context: a 2D tensor of shape [batch_size, state_size] representing
-            the attention context vector over the attention states for `decoder_outout`
-            calculated with `location_softmax` as the coefficients.
-
-        Returns:
-          a 2D tensor of shape [batch_size, shortlist_size + timesteps] representing
-          a probability distribution over the output shortlist **and** the attention states.
-        """
+    # pylint: disable=I0011,W0221,W0235
+    def __call__(self, decoder_out, location_softmax, attention_context):
         return super(PointingSoftmaxOutput, self).__call__(
             decoder_out, location_softmax, attention_context)
 
 
 class PointingDecoder(Layer):
     """PointingDecoder layer.
+
+    Decode a 3D tensor os shape [batch_size, length, shortlist_size + timesteps].
+    Each outout vector will represent a probability distribution over a set of
+    symbols representing a shortlist of symbols and a list of positions over
+    the a set of attention states.
+
+    Returns:
+      a 3D tensor of shape [batch_size, length, shortlist_size + timesteps]
+      representing the decoder output.
 
     This class implements a decoder that, in a sequence-to-sequence scenario
     has the capability of gnerating symbols from a shortlist (i.e. an output
@@ -610,27 +517,6 @@ class PointingDecoder(Layer):
         self._batch_size = None
         self._pointing_size = None
 
-    @property
-    def emit_out_init(self):
-        """Initialization for the output signal."""
-        return self._emit_out_init
-
-    @property
-    def cell_out_init(self):
-        """Initialization for the decoder cell output signal."""
-        return self._cell_out_init
-
-    @property
-    def cell_state_init(self):
-        """Initialization for the cell state signal."""
-        return self._cell_state_init
-
-    def _build(self, *args, **kwargs):
-        if not self._location_softmax.built:
-            self._location_softmax.build()
-        if not self._pointing_softmax_output.built:
-            self._pointing_softmax_output.build()
-
         states = self._location_softmax.attention.states
         self._batch_size = utils.get_dimension(states, 0)
         self._pointing_size = utils.get_dimension(states, 1)
@@ -648,6 +534,21 @@ class PointingDecoder(Layer):
 
         if self._emit_out_feedback_fit is None:
             self._emit_out_feedback_fit = lambda tensor: tensor
+
+    @property
+    def emit_out_init(self):
+        """Initialization for the output signal."""
+        return self._emit_out_init
+
+    @property
+    def cell_out_init(self):
+        """Initialization for the decoder cell output signal."""
+        return self._cell_out_init
+
+    @property
+    def cell_state_init(self):
+        """Initialization for the cell state signal."""
+        return self._cell_state_init
 
     def _loop_fn(self, time, cell_output, cell_state, loop_state):
 
@@ -695,26 +596,23 @@ class PointingDecoder(Layer):
             [cell_output, attention_context, feedback],
             axis=1)
 
+        print('elements_finished: ' + str(elements_finished))
+        print('next_cell_input: ' + str(next_cell_input))
+        print('next_cell_state: ' + str(next_cell_state))
+        print('emit_output: ' + str(emit_output))
+        print('next_loop_state: ' + str(next_loop_state))
+        print()
+
         return (elements_finished, next_cell_input, next_cell_state,
                 emit_output, next_loop_state)
 
-    def _call(self):    # pylint: disable=I0011,W0221
+    def _call_helper(self):    # pylint: disable=I0011,W0221
         outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
         outputs = outputs_ta.pack()
         return outputs
 
-    def call(self):    # pylint: disable=I0011,W0221
-        """Decode using pointing softmax.
-
-        Decode a 3D tensor os shape [batch_size, length, shortlist_size + timesteps].
-        Each outout vector will represent a probability distribution over a set of
-        symbols representing a shortlist of symbols and a list of positions over
-        the a set of attention states.
-
-        Returns:
-          a 3D tensor of shape [batch_size, length, shortlist_size + timesteps]
-          representing the decoder output.
-        """
+    # pylint: disable=I0011,W0221,W0235
+    def __call__(self):
         return super(PointingDecoder, self).__call__()
 
 

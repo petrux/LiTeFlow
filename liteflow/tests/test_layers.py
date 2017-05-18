@@ -21,25 +21,6 @@ class BahdanauAttentionTest(tf.test.TestCase):
         tf.set_random_seed(seed=self._SEED)
         np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    def _get_names(self, key):  # pylint: disable=I0011,R0201
-        collection = tf.get_collection(key)
-        names = [var.op.name for var in collection]
-        return set(sorted(names))
-
-    def _assert_all_in(self, variables, key):
-        ref = self._get_names(key)
-        for var in variables:
-            self.assertIn(
-                var.op.name, ref,
-                var.op.name + ' not in ' + key)
-
-    def _assert_none_in(self, variables, key):
-        ref = self._get_names(key)
-        for var in variables:
-            self.assertNotIn(
-                var.op.name, ref,
-                var.op.name + ' in ' + key)
-
     def test_base(self):
         """Test the attention mechanism.
 
@@ -51,7 +32,9 @@ class BahdanauAttentionTest(tf.test.TestCase):
            tf.GraphKeys.TRAINABLE_VARIABLES, depending on if the
            layer is trainable or not.
         """
+        self.setUp()
         self._test_base(trainable=True)
+        self.setUp()
         self._test_base(trainable=False)
 
     def _test_base(self, trainable):
@@ -76,22 +59,32 @@ class BahdanauAttentionTest(tf.test.TestCase):
                   np.array([[0.0517, 0.0634, 0.0750, 0.0866, 0.0979],
                             [0.3201, 0.3157, 0.3111, 0.3063, 0.3012]])]
 
-        tf.reset_default_graph()
-        self.assertEqual(0, len(self._get_names(
-            tf.GraphKeys.TRAINABLE_VARIABLES)))
+        self.assertTrue(len(tf.global_variables()) == 0)
+        self.assertTrue(len(tf.trainable_variables()) == 0)
+
         initializer = tf.constant_initializer(0.1)
         with tf.variable_scope('Scope', initializer=initializer) as scope:
             states_ = tf.placeholder(
                 dtype=tf.float32,
                 shape=[None, None, state_size],
-                name='S')
+                name='States')
             queries_ = [tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q01'),
                         tf.placeholder(dtype=tf.float32, shape=[None, query_size], name='q02')]
             attention = layers.BahdanauAttention(
-                states_, attention_size, trainable=trainable, scope=scope)
+                states_, attention_size, trainable=trainable)
             self.assertEqual(trainable, attention.trainable)
-            # attention.build()
-            scores_ = [attention(q) for q in queries_]
+
+            scores_ = []
+            scores_.append(attention(queries_[0], scope=scope))
+            self.assertEqual(scope.name, attention.scope)
+            self.assertTrue(len(tf.global_variables()) > 0)
+            if attention.trainable:
+                self.assertTrue(tf.trainable_variables())
+            variables = set([var.op.name for var in tf.global_variables()])
+            scores_.append(attention(queries_[1], scope=scope))
+            self.assertEqual(len(tf.global_variables()), len(variables))
+            for var in tf.global_variables():
+                self.assertIn(var.op.name, variables)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -103,13 +96,6 @@ class BahdanauAttentionTest(tf.test.TestCase):
 
         for act, exp in zip(results, scores):
             self.assertAllClose(act, exp, rtol=1e-4, atol=1e-4)
-
-        variables = attention.variables
-        self._assert_all_in(variables, tf.GraphKeys.GLOBAL_VARIABLES)
-        if trainable:
-            self._assert_all_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
-        else:
-            self._assert_none_in(variables, tf.GraphKeys.TRAINABLE_VARIABLES)
 
 
 class TestLocationSoftmax(tf.test.TestCase):
@@ -138,14 +124,11 @@ class TestLocationSoftmax(tf.test.TestCase):
 
         attention = mock.Mock()
         attention.states = states
-        attention.built = False
         attention.side_effect = [activations, activations]
 
         layer = layers.LocationSoftmax(attention, lengths)
         location, context = layer(query)
         _, _ = layer(query)
-        self.assertEqual(1, attention.build.call_count)
-        self.assertTrue(layer.built)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -158,46 +141,9 @@ class TestLocationSoftmax(tf.test.TestCase):
         self.assertAllClose(act_location, exp_location)
         self.assertAllClose(act_context, exp_context)
 
-    def test_build(self):
-        """Check that the build operation bounces on the injected attention."""
-
-        attention = mock.Mock()
-        attention.built = False
-        layer = layers.LocationSoftmax(attention)
-        self.assertFalse(layer.built)
-        self.assertEqual(0, attention.build.call_count)
-
-        layer.build()
-        self.assertTrue(layer.built)
-        self.assertEqual(1, attention.build.call_count)
-
-    def test_build_with_built_attention(self):
-        """Check that the build operation bounces on the injected attention."""
-
-        attention = mock.Mock()
-        attention.built = True
-        layer = layers.LocationSoftmax(attention)
-        self.assertFalse(layer.built)
-        self.assertEqual(0, attention.build.call_count)
-
-        layer.build()
-        self.assertTrue(layer.built)
-        self.assertEqual(0, attention.build.call_count)
-
 
 class TestPointingSoftmaxOutput(tf.test.TestCase):
     """Test case for the PointingSoftmaxOutput layer."""
-
-    def test_build(self):
-        """Test that the  building phase goes upstream to the injected layer."""
-
-        layer = layers.PointingSoftmaxOutput(
-            shortlist_size=10,
-            decoder_out_size=7,
-            state_size=4)
-        self.assertFalse(layer.built)
-        layer.build()
-        self.assertTrue(layer.built)
 
     def test_base(self):
         """Base test for the PointingSoftmaxOutput layer."""
@@ -226,7 +172,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
                 shortlist_size=shortlist_size,
                 decoder_out_size=decoder_out_size,
                 state_size=state_size)
-            output = layer.call(
+            output = layer(
                 decoder_out=decoder_out,
                 location_softmax=location_softmax,
                 attention_context=attention_context)
@@ -324,11 +270,6 @@ class TestPointingDecoder(tf.test.TestCase):
             location_softmax=location_softmax,
             pointing_softmax_output=pointing_softmax_output)
 
-        self.assertIsNone(layer.emit_out_init)
-        self.assertIsNone(layer.cell_out_init)
-        self.assertIsNone(layer.cell_state_init)
-
-        layer.build()
         self.assertIsNotNone(layer.emit_out_init)
         self.assertIsNotNone(layer.cell_out_init)
         self.assertIsNotNone(layer.cell_state_init)
@@ -394,7 +335,6 @@ class TestPointingDecoder(tf.test.TestCase):
             pointing_softmax_output=pointing_softmax_output,
             out_sequence_length=out_sequence_length,
             emit_out_feedback_fit=emit_out_feedback_fit)
-        layer.build()
 
         results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
         elements_finished = results[0]
@@ -497,7 +437,6 @@ class TestPointingDecoder(tf.test.TestCase):
             location_softmax=location_softmax,
             pointing_softmax_output=pointing_softmax_output,
             emit_out_feedback_fit=emit_out_feedback_fit)
-        layer.build()
 
         results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
 
@@ -550,15 +489,14 @@ class _TestSmoke(tf.test.TestCase):
         tf.set_random_seed(self._SEED)
         np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    @unittest.skip('skip')
     def test_smoke(self):
         """Build a pointer decoder and test that it works."""
         batch_size = 2
-        timesteps = 10
+        # timesteps = 10
         state_size = 4
         attention_inner_size = 7
         shortlist_size = 3
-        emit_out_feedback_size = 17
+        # emit_out_feedback_size = 17
         decoder_out_size = 5
 
         attention_states = tf.placeholder(tf.float32, shape=[None, None, state_size])
@@ -573,17 +511,16 @@ class _TestSmoke(tf.test.TestCase):
             shortlist_size=shortlist_size,
             attention_sequence_length=attention_sequence_length,
             output_sequence_length=output_sequence_length,
-            emit_out_feedback_size=emit_out_feedback_size,
+            emit_out_feedback_size=None,  # emit_out_feedback_size,
             parallel_iterations=None,
             swap_memory=False,
             trainable=True)
-        decoder.build()
-        output = decoder.call()
+        output = decoder()
         print(output)
 
-        act_attention_states = np.ones((batch_size, timesteps, state_size))
-        act_attention_sequence_lengths = [6, 8]
-        act_output_sequence_length = [5, 7]
+        # act_attention_states = np.ones((batch_size, timesteps, state_size))
+        # act_attention_sequence_lengths = [6, 8]
+        # act_output_sequence_length = [5, 7]
 
 
 if __name__ == '__main__':
