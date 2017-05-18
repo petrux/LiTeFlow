@@ -11,7 +11,7 @@ import tensorflow as tf
 from liteflow import layers, utils
 
 
-class BahdanauAttentionTest(tf.test.TestCase):
+class BahdanauAttentionTest(tf.test.TestCase):width
     """Test case for the liteflow.layers.BahdanauAttention class."""
 
     _SEED = 23
@@ -90,7 +90,6 @@ class BahdanauAttentionTest(tf.test.TestCase):
             attention = layers.BahdanauAttention(
                 states_, attention_size, trainable=trainable, scope=scope)
             self.assertEqual(trainable, attention.trainable)
-            # attention.build()
             scores_ = [attention(q) for q in queries_]
 
         with tf.Session() as sess:
