@@ -517,20 +517,20 @@ class PointingDecoder(Layer):
         self._batch_size = None
         self._pointing_size = None
 
-        states = self._location_softmax.attention.states
-        self._batch_size = utils.get_dimension(states, 0)
-        self._pointing_size = utils.get_dimension(states, 1)
-        if self._emit_out_init is None:
-            self._emit_out_init = self._pointing_softmax_output.zero_output(
-                self._batch_size, self._pointing_size)
+        # states = self._location_softmax.attention.states
+        # self._batch_size = utils.get_dimension(states, 0)
+        # self._pointing_size = utils.get_dimension(states, 1)
+        # if self._emit_out_init is None:
+        #     self._emit_out_init = self._pointing_softmax_output.zero_output(
+        #         self._batch_size, self._pointing_size)
 
-        if self._cell_out_init is None:
-            cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
-            self._cell_out_init = tf.zeros(cell_out_shape)
+        # if self._cell_out_init is None:
+        #     cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
+        #     self._cell_out_init = tf.zeros(cell_out_shape)
 
-        if self._cell_state_init is None:
-            self._cell_state_init = self._decoder_cell.zero_state(
-                self._batch_size, dtype=tf.float32)
+        # if self._cell_state_init is None:
+        #     self._cell_state_init = self._decoder_cell.zero_state(
+        #         self._batch_size, dtype=tf.float32)
 
         if self._emit_out_feedback_fit is None:
             self._emit_out_feedback_fit = lambda tensor: tensor
@@ -550,8 +550,23 @@ class PointingDecoder(Layer):
         """Initialization for the cell state signal."""
         return self._cell_state_init
 
-    def _loop_fn(self, time, cell_output, cell_state, loop_state):
+    def _step(self, prev_cell_out, prev_cell_state, prev_emit_out, location, attention):
+        cell_input = tf.concat([prev_cell_out, attention, prev_emit_out], axis=1)
+        cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
+        emit_out = self._pointing_softmax_output(cell_out, location, attention)
+        return cell_out, cell_state, emit_out
 
+    def _body(self, time, cell_input, cell_state, location, attention, emit_ta):
+        cell_out, cell_state = self._decoder_cell(cell_input, cell_state)
+        emit_out = self._pointing_softmax_output(cell_out, location, attention)
+        query = cell_out  # TODO(petrux): concat feedback
+        location, attention = self._location_softmax(query)
+        feedback = self._emit_out_feedback_fit(emit_out)
+        cell_input = tf.concat([cell_out, attention, feedback], axis=1)
+        emit_ta = emit_ta.write(time, emit_out)
+        return (time, cell_input, cell_state, location, attention, emit_ta)
+
+    def _loop_fn(self, time, cell_output, cell_state, loop_state):
         # Determin how many sequences are actually over and define
         # a flag to check if all of them have been fully scanned.
         if self._sequence_length is None:
@@ -596,6 +611,10 @@ class PointingDecoder(Layer):
             [cell_output, attention_context, feedback],
             axis=1)
 
+        print(cell_output.get_shape())
+        print(attention_context.get_shape())
+        print(feedback.get_shape())
+
         print('elements_finished: ' + str(elements_finished))
         print('next_cell_input: ' + str(next_cell_input))
         print('next_cell_state: ' + str(next_cell_state))
@@ -606,9 +625,18 @@ class PointingDecoder(Layer):
         return (elements_finished, next_cell_input, next_cell_state,
                 emit_output, next_loop_state)
 
-    def _call_helper(self):    # pylint: disable=I0011,W0221
-        outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
-        outputs = outputs_ta.pack()
+    # pylint: disable=I0011,W0221,W0235
+    def _call_helper(self):
+        time = tf.constant(0, dtype=tf.int32)
+        outputs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+
+        # initialize
+        (elements_finished, cell_input, cell_state, output, loop_state) =\
+            self._loop_fn(time, None, None, None)
+
+        print(loop_state)
+        outputs_ta = outputs_ta.write(time, output)
+        outputs = outputs_ta.stack()
         return outputs
 
     # pylint: disable=I0011,W0221,W0235
