@@ -556,15 +556,15 @@ class PointingDecoder(Layer):
         emit_out = self._pointing_softmax_output(cell_out, location, attention)
         return cell_out, cell_state, emit_out
 
-    def _body(self, time, cell_input, cell_state, location, attention, emit_ta):
-        cell_out, cell_state = self._decoder_cell(cell_input, cell_state)
-        emit_out = self._pointing_softmax_output(cell_out, location, attention)
-        query = cell_out  # TODO(petrux): concat feedback
-        location, attention = self._location_softmax(query)
-        feedback = self._emit_out_feedback_fit(emit_out)
-        cell_input = tf.concat([cell_out, attention, feedback], axis=1)
+    def _body(self, time, prev_cell_out, prev_cell_state,
+              prev_emit_out, location, attention, emit_ta):
+        cell_out, cell_state, emit_out = self._step(
+            prev_cell_out, prev_cell_state, prev_emit_out, location, attention)
         emit_ta = emit_ta.write(time, emit_out)
-        return (time, cell_input, cell_state, location, attention, emit_ta)
+        feedback = self._emit_out_feedback_fit(emit_out)
+        query = tf.concat([cell_out, feedback], axis=-1)
+        location, attention = self._location_softmax(query)
+        return (time, cell_out, cell_state, emit_out, location, attention, emit_ta)
 
     def _loop_fn(self, time, cell_output, cell_state, loop_state):
         # Determin how many sequences are actually over and define
