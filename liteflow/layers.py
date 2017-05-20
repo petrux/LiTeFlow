@@ -566,78 +566,13 @@ class PointingDecoder(Layer):
         location, attention = self._location_softmax(query)
         return (time, cell_out, cell_state, emit_out, location, attention, emit_ta)
 
-    def _loop_fn(self, time, cell_output, cell_state, loop_state):
-        # Determin how many sequences are actually over and define
-        # a flag to check if all of them have been fully scanned.
-        if self._sequence_length is None:
-            batch_dim = utils.get_dimension(cell_output, 0)
-            elements_finished = tf.ones([batch_dim], tf.bool)
-        else:
-            elements_finished = (time >= self._sequence_length)
-
-        # Declare and initialize to `None` all the return arguments.
-        next_cell_input = None
-        next_cell_state = None
-        emit_output = None
-        next_loop_state = (None, None)
-        feedback = None
-
-        if cell_output is None:
-            # If the `cell_output` is None, it means we are at the very
-            # first iteration. In this case, we need to initialize the
-            # return arguments to their initial values.
-            cell_output = self._cell_out_init
-            next_cell_state = self._cell_state_init
-            emit_output = self._emit_out_init
-        else:
-            pointing_softmax, attention_context = loop_state
-            next_cell_state = cell_state
-            emit_output = self._pointing_softmax_output(
-                cell_output, pointing_softmax, attention_context)
-
-        # Evaluate the pointing scores and the attention context for
-        # the next step and pack them into the loop state.
-        pointing_softmax, attention_context = self._location_softmax(cell_output)
-        next_loop_state = (pointing_softmax, attention_context)
-
-        # Fit the output to be fed back.
-        feedback = self._emit_out_feedback_fit(emit_output)
-
-        # Pack the next input for the decoder cell. Such input is
-        # the concatenation of the current cell output (since it is
-        # a recurrent scenario), the current attention_context and
-        # the feedback coming from the output signal.
-        next_cell_input = tf.concat(
-            [cell_output, attention_context, feedback],
-            axis=1)
-
-        print(cell_output.get_shape())
-        print(attention_context.get_shape())
-        print(feedback.get_shape())
-
-        print('elements_finished: ' + str(elements_finished))
-        print('next_cell_input: ' + str(next_cell_input))
-        print('next_cell_state: ' + str(next_cell_state))
-        print('emit_output: ' + str(emit_output))
-        print('next_loop_state: ' + str(next_loop_state))
-        print()
-
-        return (elements_finished, next_cell_input, next_cell_state,
-                emit_output, next_loop_state)
-
     # pylint: disable=I0011,W0221,W0235
     def _call_helper(self):
         time = tf.constant(0, dtype=tf.int32)
         outputs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-
-        # initialize
-        (elements_finished, cell_input, cell_state, output, loop_state) =\
-            self._loop_fn(time, None, None, None)
-
-        print(loop_state)
-        outputs_ta = outputs_ta.write(time, output)
-        outputs = outputs_ta.stack()
-        return outputs
+        raise NotImplementedError('Not yet!')
+        # outputs = outputs_ta.stack()
+        # return outputs
 
     # pylint: disable=I0011,W0221,W0235
     def __call__(self):
