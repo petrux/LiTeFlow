@@ -23,16 +23,16 @@ class BaseVocabularyTest(unittest.TestCase):
         """Test that __contains__ bounces on contains()."""
 
         vocab = _BaseVocabulary()
-        self.assertEquals(0, contains.call_count)
+        self.assertEqual(0, contains.call_count)
 
         arg = 23
         _ = arg in vocab
-        self.assertEquals(1, contains.call_count)
+        self.assertEqual(1, contains.call_count)
         contains.assert_called_with(arg)
 
         arg = object()
         _ = arg in vocab
-        self.assertEquals(2, contains.call_count)
+        self.assertEqual(2, contains.call_count)
         contains.assert_called_with(arg)
 
     @mock.patch.object(_BaseVocabulary, 'size')
@@ -40,13 +40,13 @@ class BaseVocabularyTest(unittest.TestCase):
         """Test that __len__ bounces on size()."""
 
         vocab = _BaseVocabulary()
-        self.assertEquals(0, size.call_count)
+        self.assertEqual(0, size.call_count)
 
         _ = len(vocab)
-        self.assertEquals(1, size.call_count)
+        self.assertEqual(1, size.call_count)
 
         _ = len(vocab)
-        self.assertEquals(2, size.call_count)
+        self.assertEqual(2, size.call_count)
 
     @mock.patch.object(_BaseVocabulary, 'items')
     def test_items(self, items):
@@ -54,9 +54,9 @@ class BaseVocabularyTest(unittest.TestCase):
 
         vocab = _BaseVocabulary()
         items.return_value = iter([])
-        self.assertEquals(0, items.call_count)
+        self.assertEqual(0, items.call_count)
         _ = iter(vocab)
-        self.assertEquals(1, items.call_count)
+        self.assertEqual(1, items.call_count)
 
 
 class InMemoryVocabularyTest(unittest.TestCase):
@@ -65,7 +65,7 @@ class InMemoryVocabularyTest(unittest.TestCase):
     def test_empty(self):
         """Test the empty vocabulary."""
         vocab = vocabulary.InMemoryVocabulary()
-        self.assertEquals(0, len(vocab))
+        self.assertEqual(0, len(vocab))
 
     def test_base(self):
         """Test the basic functionalities of the vocabulary."""
@@ -75,11 +75,11 @@ class InMemoryVocabularyTest(unittest.TestCase):
 
         for i, word in enumerate(words):
             self.assertFalse(word in vocab)
-            self.assertEquals(i, vocab.add(word))
+            self.assertEqual(i, vocab.add(word))
             self.assertTrue(word in vocab)
-            self.assertEquals(i, vocab.index(word))
-            self.assertEquals(word, vocab.word(i))
-            self.assertEquals(i + 1, len(vocab))
+            self.assertEqual(i, vocab.index(word))
+            self.assertEqual(word, vocab.word(i))
+            self.assertEqual(i + 1, len(vocab))
 
     def test_oov_words(self):
         """Test out-of-vocabulary words."""
@@ -102,7 +102,7 @@ class InMemoryVocabularyTest(unittest.TestCase):
             vocab.add(word)
 
         for index, word in enumerate(words):
-            self.assertEquals(word, vocab.word(index))
+            self.assertEqual(word, vocab.word(index))
         self.assertRaises(ValueError, lambda: vocab.word(-1))
         self.assertRaises(ValueError, lambda: vocab.word(len(words)))
 
@@ -112,9 +112,9 @@ class InMemoryVocabularyTest(unittest.TestCase):
         word = 'WORD'
         vocab = vocabulary.InMemoryVocabulary()
         index = vocab.add(word)
-        self.assertEquals(1, vocab.size())
-        self.assertEquals(index, vocab.add(word))
-        self.assertEquals(1, vocab.size())
+        self.assertEqual(1, vocab.size())
+        self.assertEqual(index, vocab.add(word))
+        self.assertEqual(1, vocab.size())
 
 
 class TestUNKVocabulary(unittest.TestCase):
@@ -131,11 +131,11 @@ class TestUNKVocabulary(unittest.TestCase):
         unkvoc = vocabulary.UNKVocabulary(voc)
 
         word = 'X'
-        self.assertEquals(4, unkvoc.size())
+        self.assertEqual(4, unkvoc.size())
         self.assertFalse(word in unkvoc)
         index = unkvoc.index(word)
-        self.assertEquals(unk, unkvoc.word(index))
-        self.assertEquals(index, unkvoc.index(unk))
+        self.assertEqual(unk, unkvoc.word(index))
+        self.assertEqual(index, unkvoc.index(unk))
 
 if __name__ == '__main__':
     unittest.main()
