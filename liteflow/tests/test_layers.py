@@ -252,11 +252,14 @@ class TestPointingDecoder(tf.test.TestCase):
         out_sequence_length = location_dim * tf.ones(dtype=tf.int32, shape=[batch_dim])
 
         decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
         cell_out = 3 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
         cell_state = 4 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
         decoder_cell.side_effect = [(cell_out, cell_state)]
 
         location_softmax = mock.Mock()
+        location_softmax.attention = mock.Mock()
+        location_softmax.attention.states = states
 
         pointing_softmax_output = mock.Mock()
         emit_out_dim = shortlist_size + location_dim
@@ -326,6 +329,8 @@ class TestPointingDecoder(tf.test.TestCase):
         out_sequence_length = location_dim * tf.ones(dtype=tf.int32, shape=[batch_dim])
 
         decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+
         pointing_softmax_output = mock.Mock()
 
         emit_out_feedback_fit = mock.Mock()
@@ -334,6 +339,8 @@ class TestPointingDecoder(tf.test.TestCase):
         emit_out_feedback_fit.side_effect = _feedback
 
         location_softmax = mock.Mock()
+        location_softmax.attention = mock.Mock()
+        location_softmax.attention.states = states
         next_location = 20 * tf.ones(shape=tf.stack([batch_dim, location_dim]))
         next_attention = 21 * tf.ones(shape=tf.stack([batch_dim, state_size]))
         location_softmax.side_effect = [(next_location, next_attention)]
@@ -415,7 +422,6 @@ class _TestSmoke(tf.test.TestCase):
         tf.set_random_seed(self._SEED)
         np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    @unittest.skip('Under refactoring')
     def test_smoke(self):
         """Build a pointer decoder and test that it works."""
         batch_size = 2
