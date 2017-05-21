@@ -5,8 +5,8 @@ import tensorflow as tf
 
 def _trim(tensor, width):
     """Trim the tensor along the -1 axis to the target width."""
-    begin = [0, 0, 0]
-    size = tf.concat([tf.shape(tensor)[:2], [width]], axis=0)
+    begin = [0] * tensor.shape.ndims  # , 0, 0]
+    size = tf.concat([tf.shape(tensor)[:-1], [width]], axis=0)
     trimmed = tf.slice(tensor, begin=begin, size=size)
     return trimmed
 
@@ -59,7 +59,7 @@ def trim(tensor, width):
 def _pad(tensor, width):
     """Pad the tensor along the -1 axis to the target width."""
     diff = width - tf.shape(tensor)[-1]
-    paddings = [[0, 0], [0, 0], [0, diff]]
+    paddings = ([[0, 0]] * (tensor.shape.ndims - 1)) + [[0, diff]]
     padded = tf.pad(tensor, paddings, "CONSTANT")
     return padded
 
@@ -120,18 +120,19 @@ def _fit(tensor, width):
 def fit(tensor, width):
     """Trim or pad the tensor on the -1 axis to a given width.
 
-    Adapt a 3D tensor of shape `[batch, length, width_in]` to the shape
-    `[batch, length, width]` trimming the extra values or padding with
+    Adapt a tensor of shape `[..., width_in]` to the shape
+    `[..., width]` trimming the extra values or padding with
     `0.0` the missing ones. If the value of `width` is the same of
     the `width_in`, no operation is performed.
 
     Arguments:
-      tensor: a 3D tf.Tensor of shape `[batch, length, in_width]`.
+      tensor: a tf.Tensor of shape `[..., in_width]`.
       width: a `int` representing the target value of the 3rd
         dimension of the output tensor.
 
     Returns:
-      a 3D tensor of shape `[batch, length, width]`.
+      a 3D tensor of shape `[..., width]`. The third dimension will be
+      statically defined as `width`.
 
     Example:
     ```python
@@ -209,6 +210,7 @@ def fit(tensor, width):
     result = tf.cond(tf.equal(actual, width),
                      lambda: tensor,
                      lambda: _fit(tensor, width))
+    result.set_shape(result.shape.as_list()[:-1] + [width])
     return result
 
 

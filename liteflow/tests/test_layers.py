@@ -227,6 +227,8 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
 class TestPointingDecoder(tf.test.TestCase):
     """Test case for the PointingDecoder class."""
 
+    import unittest
+
     _SEED = 23
 
     def setUp(self):
@@ -234,8 +236,82 @@ class TestPointingDecoder(tf.test.TestCase):
         tf.set_random_seed(self._SEED)
         np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
 
-    def test_build_and_init(self):
-        """Test the .build moethod and the default init tensors."""
+    def test_step(self):
+        """Test the single step."""
+
+        batch_size = 2
+        shortlist_size = 3
+        timesteps = 11
+        state_size = 4
+        cell_output_size = 5
+        cell_state_size = 2 * cell_output_size
+
+        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
+        batch_dim = utils.get_dimension(states, 0)
+        location_dim = utils.get_dimension(states, 1)
+        out_sequence_length = location_dim * tf.ones(dtype=tf.int32, shape=[batch_dim])
+
+        decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+        cell_out = 3 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
+        cell_state = 4 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
+        decoder_cell.side_effect = [(cell_out, cell_state)]
+
+        location_softmax = mock.Mock()
+        location_softmax.attention = mock.Mock()
+        location_softmax.attention.states = states
+
+        pointing_softmax_output = mock.Mock()
+        emit_out_dim = shortlist_size + location_dim
+        emit_out = 23 * tf.ones(tf.stack([batch_dim, emit_out_dim]))
+        pointing_softmax_output.side_effect = [emit_out]
+
+        layer = layers.PointingDecoder(
+            decoder_cell=decoder_cell,
+            out_sequence_length=out_sequence_length,
+            location_softmax=location_softmax,
+            pointing_softmax_output=pointing_softmax_output)
+
+        prev_cell_out = 1 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
+        prev_cell_state = 2 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
+        prev_emit_out = 22 * tf.ones(tf.stack([batch_dim, emit_out_dim]))
+        location = 10 * tf.ones(shape=tf.stack([batch_dim, location_dim]))
+        attention = 11 * tf.ones(shape=tf.stack([batch_dim, state_size]))
+
+        # pylint: disable=I0011,W0212
+        act_cell_out_t, act_cell_state_t, act_emit_out_t =\
+            layer._step(prev_cell_out, prev_cell_state, prev_emit_out, location, attention)
+
+        # OUTPUT TENSORS ASSERTIONS.
+        self.assertEqual(act_cell_out_t, cell_out)
+        self.assertEqual(act_cell_state_t, cell_state)
+        self.assertEqual(act_emit_out_t, emit_out)
+
+        # DECODER CELL ASSERTIONS.
+        # Since the first argument of the cell function is dynamically built
+        # concatenating different tensor, we can do a tensor-based assertion
+        # only on the second argument, i.e. the cell state.
+        decoder_cell.assert_called_once()
+        args, _ = tuple(decoder_cell.call_args)
+        act_cell_in_t, act_prev_cell_state_t = args
+        exp_cell_in_t = tf.concat([prev_cell_out, attention, prev_emit_out], axis=1)
+        self.assertEqual(act_prev_cell_state_t, prev_cell_state)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            exp_cell_in, act_cell_in = sess.run(
+                fetches=[act_cell_in_t, exp_cell_in_t],
+                feed_dict={
+                    states: np.ones((batch_size, timesteps, state_size))
+                })
+            self.assertAllClose(exp_cell_in, act_cell_in)
+
+        # POINTING SOFTMAX OUTPUT ASSERTIONS.
+        pointing_softmax_output.assert_called_once_with(cell_out, location, attention)
+
+    @mock.patch.object(layers.PointingDecoder, '_step')
+    def test_body(self, _step=None):
+        """Test the loop body"""
 
         batch_size = 2
         shortlist_size = 3
@@ -249,232 +325,89 @@ class TestPointingDecoder(tf.test.TestCase):
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
         batch_dim = utils.get_dimension(states, 0)
         location_dim = utils.get_dimension(states, 1)
-        output_dim = shortlist_size + location_dim
-        zero_emit_out = tf.zeros(tf.stack([batch_dim, output_dim]))
-        cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
-        out_sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
+        emit_out_dim = shortlist_size + location_dim
+        out_sequence_length = location_dim * tf.ones(dtype=tf.int32, shape=[batch_dim])
 
         decoder_cell = mock.Mock()
         decoder_cell.output_size = cell_output_size
-        decoder_cell.zero_state.side_effect = [cell_zero_state]
-
-        location_softmax = mock.Mock()
-        location_softmax.attention.states = states
 
         pointing_softmax_output = mock.Mock()
-        pointing_softmax_output.zero_output.side_effect = [zero_emit_out]
+
+        emit_out_feedback_fit = mock.Mock()
+        def _feedback(value):
+            return value
+        emit_out_feedback_fit.side_effect = _feedback
+
+        location_softmax = mock.Mock()
+        location_softmax.attention = mock.Mock()
+        location_softmax.attention.states = states
+        next_location = 20 * tf.ones(shape=tf.stack([batch_dim, location_dim]))
+        next_attention = 21 * tf.ones(shape=tf.stack([batch_dim, state_size]))
+        location_softmax.side_effect = [(next_location, next_attention)]
+
+        cell_out = 3 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
+        cell_state = 4 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
+        emit_out = 23 * tf.ones(tf.stack([batch_dim, emit_out_dim]))
+        _step.side_effect = [(cell_out, cell_state, emit_out)]
 
         layer = layers.PointingDecoder(
             decoder_cell=decoder_cell,
             out_sequence_length=out_sequence_length,
             location_softmax=location_softmax,
-            pointing_softmax_output=pointing_softmax_output)
+            pointing_softmax_output=pointing_softmax_output,
+            emit_out_feedback_fit=emit_out_feedback_fit)
 
-        self.assertIsNotNone(layer.emit_out_init)
-        self.assertIsNotNone(layer.cell_out_init)
-        self.assertIsNotNone(layer.cell_state_init)
-
-        data = np.ones((batch_size, timesteps, state_size))
-        exp_output_init = np.zeros((batch_size, emit_out_size))
-        exp_cell_out_init = np.zeros((batch_size, cell_output_size))
-        exp_cell_state_init = np.zeros((batch_size, cell_state_size))
-
-        with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
-            act_output_init = sess.run(layer.emit_out_init, {states: data})
-            act_cell_out_init = sess.run(layer.cell_out_init, {states: data})
-            act_cell_state_init = sess.run(layer.cell_state_init, {states: data})
-
-        self.assertAllClose(act_output_init, exp_output_init)
-        self.assertAllClose(act_cell_out_init, exp_cell_out_init)
-        self.assertAllClose(act_cell_state_init, exp_cell_state_init)
-
-    def test_loop_fn_init(self):
-        """Test the initialization of the loop function."""
-
-        batch_size = 2
-        shortlist_size = 3
-        timesteps = 11
-        location_size = timesteps
-        state_size = 4
-        cell_output_size = 5
-        cell_state_size = 2 * cell_output_size
-        cell_input_size = cell_output_size + state_size + shortlist_size + location_size
-        emit_out_size = shortlist_size + location_size  # pylint: disable=I0011,W0612
-        out_sequence_steps = [7, 14]
-
-        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
-        out_sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
-        batch_dim = utils.get_dimension(states, 0)
-        timesteps_dim = utils.get_dimension(states, 1)
-        emit_out_dim = shortlist_size + timesteps_dim
-        emit_out_init = tf.random_normal(tf.stack([batch_dim, emit_out_dim]))
-        cell_zero_state = tf.zeros(tf.stack([batch_dim, cell_state_size]))
         time = tf.constant(0, dtype=tf.int32)
+        prev_cell_out = 1 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
+        prev_cell_state = 2 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
+        prev_emit_out = 22 * tf.ones(tf.stack([batch_dim, emit_out_dim]))
+        location = 10 * tf.ones(shape=tf.stack([batch_dim, location_dim]))
+        attention = 11 * tf.ones(shape=tf.stack([batch_dim, state_size]))
+        emit_ta = tf.TensorArray(size=0, dynamic_size=True, dtype=tf.float32)
 
-        location_softmax_t = tf.random_normal(shape=[batch_dim, timesteps_dim])
-        attention_context_t = tf.random_normal(shape=[batch_dim, state_size])
+        # pylint: disable=I0011,W0212
+        result = layer._body(time, prev_cell_out, prev_cell_state,
+                             prev_emit_out, location, attention, emit_ta)
+        self.assertEqual(7, len(result))
+        self.assertEqual(result[0], time)
+        self.assertEqual(result[1], cell_out)
+        self.assertEqual(result[2], cell_state)
+        self.assertEqual(result[3], emit_out)
+        self.assertEqual(result[4], next_location)
+        self.assertEqual(result[5], next_attention)
 
-        decoder_cell = mock.Mock()
-        decoder_cell.output_size = cell_output_size
-        decoder_cell.zero_state.side_effect = [cell_zero_state]
-
-        location_softmax = mock.Mock()
-        location_softmax.attention.states = states
-        location_softmax.side_effect = [(location_softmax_t, attention_context_t)]
-
-        pointing_softmax_output = mock.Mock()
-        pointing_softmax_output.zero_output.side_effect = [emit_out_init]
-
-        emit_out_feedback_fit = mock.Mock()
-        emit_out_feedback_fit.side_effect = lambda x: x
-
-        layer = layers.PointingDecoder(
-            decoder_cell=decoder_cell,
-            location_softmax=location_softmax,
-            pointing_softmax_output=pointing_softmax_output,
-            out_sequence_length=out_sequence_length,
-            emit_out_feedback_fit=emit_out_feedback_fit)
-
-        results = layer._loop_fn(time, None, None, (None, None))  # pylint: disable=I0011,W0212
-        elements_finished = results[0]
-        next_cell_input = results[1]
-        next_cell_state = results[2]
-        emit_output = results[3]
-        next_pointing_scores, next_attention_context = results[4]
-
-        # Assertion of programatically returned tensors.
-        self.assertEqual(next_cell_state, cell_zero_state)
-        self.assertEqual(emit_output, emit_out_init)
-        self.assertEqual(next_pointing_scores, location_softmax_t)
-        self.assertEqual(next_attention_context, attention_context_t)
-        emit_out_feedback_fit.assert_called_once_with(emit_output)
-
-        # Data for feeding placeholders and expected values.
-        data = np.ones((batch_size, timesteps, state_size))
-        exp_elements_finished = np.asarray([False] * batch_size)
-        exp_next_cell_input_shape = (batch_size, cell_input_size)
-        fetches = [elements_finished,
-                   next_cell_input,
-                   layer.cell_out_init,
-                   attention_context_t,
-                   emit_out_init]
-        feed_dict = {
-            states: data,
-            out_sequence_length: out_sequence_steps}
+        # ASSERTIONS ON EMIT OUT
+        act_emit_t = result[6].stack()
+        self.assertEqual(3, act_emit_t.shape.ndims)
+        exp_emit_length = 1
+        exp_emit_first_t = emit_out
+        exp_emit_shape = (exp_emit_length, batch_size, emit_out_size)
+        feed = {states: np.ones((batch_size, timesteps, state_size))}
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            actual = sess.run(fetches, feed_dict)
-        act_elements_finished = actual[0]
-        act_next_cell_input = actual[1]
-        act_cell_out_init = actual[2]
-        act_attention_context = actual[3]
-        act_zero_output = actual[4]
-        act_next_cell_input_rebuilt = np.concatenate(
-            (act_cell_out_init, act_attention_context, act_zero_output), axis=1)
+            act_emit = sess.run(act_emit_t, feed)
+            self.assertEqual(exp_emit_shape, act_emit.shape)
+            act_emit_first = act_emit[0]
+            exp_emit_first = sess.run(exp_emit_first_t, feed)
+            self.assertAllEqual(exp_emit_first, act_emit_first)
 
-        self.assertEqual(exp_next_cell_input_shape, act_next_cell_input.shape)
-        self.assertAllEqual(exp_elements_finished, act_elements_finished)
-        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
-
-    def test_loop_fn_step(self):
-        """Test a regular step of the loop function."""
-
-        batch_size = 2
-        shortlist_size = 3
-        timesteps = 11
-        location_size = timesteps
-        state_size = 4
-        cell_output_size = 5
-        cell_state_size = 2 * cell_output_size
-        cell_input_size = cell_output_size + state_size + + shortlist_size + timesteps
-        emit_out_size = shortlist_size + location_size  # pylint: disable=I0011,W0612
-        current_time = 5
-        lengths = [3, 10]
-
-        # placeholders and dynamic shapes.
-        states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
-        out_sequence_length = tf.placeholder(dtype=tf.int32, shape=[None])
-        batch_dim = utils.get_dimension(states, 0)
-        timesteps_dim = utils.get_dimension(states, 1)
-        emit_out_dim = shortlist_size + timesteps_dim
-        # init values.
-        emit_out_init = tf.zeros(tf.stack([batch_dim, emit_out_dim]))
-        cell_state_init = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
-
-        # input tensors.
-        time = tf.constant(current_time, dtype=tf.int32)
-        cell_output = tf.random_normal(shape=tf.stack([batch_dim, cell_output_size]))
-        cell_state = tf.random_normal(shape=tf.stack([batch_dim, cell_state_size]))
-        location_softmax_t = tf.random_normal(shape=[batch_dim, location_size])
-        attention_context_t = tf.random_normal(shape=[batch_dim, state_size])
-        loop_state = (location_softmax_t, attention_context_t)
-
-        # output/next step tensors.
-        emit_out = tf.ones(tf.stack([batch_dim, emit_out_dim]))
-        next_location_softmax = tf.random_normal(shape=[batch_dim, timesteps_dim])
-        next_attention_context = tf.random_normal(shape=[batch_dim, state_size])
-        next_loop_state = (next_location_softmax, next_attention_context)
-
-        decoder_cell = mock.Mock()
-        decoder_cell.output_size = cell_output_size
-        decoder_cell.zero_state.side_effect = [cell_state_init]
-
-        location_softmax = mock.Mock()
-        location_softmax.attention.states = states
-        location_softmax.side_effect = [next_loop_state]
-
-        pointing_softmax_output = mock.Mock()
-        pointing_softmax_output.zero_output.side_effect = [emit_out_init]
-        pointing_softmax_output.side_effect = [emit_out]
-
-        emit_out_feedback_fit = mock.Mock()
-        emit_out_feedback_fit.side_effect = lambda x: x
-
-        layer = layers.PointingDecoder(
-            decoder_cell=decoder_cell,
-            out_sequence_length=out_sequence_length,
-            location_softmax=location_softmax,
-            pointing_softmax_output=pointing_softmax_output,
-            emit_out_feedback_fit=emit_out_feedback_fit)
-
-        results = layer._loop_fn(time, cell_output, cell_state, loop_state)  # pylint: disable=I0011,W0212
-
-        # Assertions on programatically returned tensors.
-        self.assertEqual(cell_state, results[2])
-        self.assertEqual(emit_out, results[3])
-        self.assertEqual(next_loop_state, results[4])
+        # ASSERTION ON FEEDBACK FIT.
         emit_out_feedback_fit.assert_called_once_with(emit_out)
 
-        elements_finished = results[0]
-        next_cell_input = results[1]
-        data = np.ones((batch_size, timesteps, state_size))
-        exp_elements_finished = np.asarray([current_time >= l for l in lengths])
-        exp_next_cell_input_shape = (batch_size, cell_input_size)
-        fetches = [elements_finished,
-                   next_cell_input,
-                   cell_output,
-                   next_attention_context,
-                   emit_out]
-        feed_dict = {
-            states: data,
-            out_sequence_length: lengths
-        }
+        # ASSERTIONS ON _step.
+        _step.assert_called_once_with(
+            prev_cell_out, prev_cell_state, prev_emit_out, location, attention)
+
+        # ASSERTIONS ON LOCATION SOFTMAX.
+        location_softmax.assert_called_once()
+        location_softmax_args = tuple(location_softmax.call_args)[0]
+        act_query_t = location_softmax_args[0]
+        exp_query_t = tf.concat([cell_out, emit_out], axis=1)
+        feed = {states: np.ones((batch_size, timesteps, state_size))}
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            actual = sess.run(fetches, feed_dict)
-
-        act_elements_finished = actual[0]
-        act_next_cell_input = actual[1]
-        act_cell_out = actual[2]
-        act_attention_context = actual[3]
-        act_emit_out = actual[4]
-        act_next_cell_input_rebuilt = np.concatenate([
-            act_cell_out, act_attention_context, act_emit_out], axis=1)
-
-        self.assertEqual(exp_next_cell_input_shape, act_next_cell_input.shape)
-        self.assertAllEqual(exp_elements_finished, act_elements_finished)
-        self.assertAllEqual(act_next_cell_input, act_next_cell_input_rebuilt)
+            exp_query, act_query = sess.run([exp_query_t, act_query_t], feed)
+            self.assertAllEqual(exp_query, act_query)
 
 
 class _TestSmoke(tf.test.TestCase):
@@ -492,11 +425,11 @@ class _TestSmoke(tf.test.TestCase):
     def test_smoke(self):
         """Build a pointer decoder and test that it works."""
         batch_size = 2
-        # timesteps = 10
+        timesteps = 10
         state_size = 4
         attention_inner_size = 7
         shortlist_size = 3
-        # emit_out_feedback_size = 17
+        emit_out_feedback_size = 15
         decoder_out_size = 5
 
         attention_states = tf.placeholder(tf.float32, shape=[None, None, state_size])
@@ -511,17 +444,25 @@ class _TestSmoke(tf.test.TestCase):
             shortlist_size=shortlist_size,
             attention_sequence_length=attention_sequence_length,
             output_sequence_length=output_sequence_length,
-            emit_out_feedback_size=None,  # emit_out_feedback_size,
+            emit_out_feedback_size=emit_out_feedback_size,
             parallel_iterations=None,
             swap_memory=False,
             trainable=True)
         output = decoder()
-        print(output)
 
-        # act_attention_states = np.ones((batch_size, timesteps, state_size))
-        # act_attention_sequence_lengths = [6, 8]
-        # act_output_sequence_length = [5, 7]
+        act_attention_states = np.ones((batch_size, timesteps, state_size))
+        act_attention_sequence_lengths = [6, 8]
+        act_output_sequence_length = [5, 7]
 
+        feed_dict = {
+            attention_states: act_attention_states,
+            attention_sequence_length: act_attention_sequence_lengths,
+            output_sequence_length: act_output_sequence_length
+        }
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            print(sess.run(output, feed_dict))
 
 if __name__ == '__main__':
     tf.test.main()

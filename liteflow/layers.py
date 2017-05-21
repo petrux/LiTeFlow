@@ -318,6 +318,18 @@ class LocationSoftmax(Layer):
         """A tensor representing the actual lenght of sequences of states in a batch."""
         return self._sequence_length
 
+    def zero_location_softmax(self, batch_size):
+        """A tensor representign the zero location softmax."""
+        location_size = utils.get_dimension(self.attention.states, 1)
+        shape = tf.stack([batch_size, location_size])
+        return tf.zeros(shape=shape, dtype=tf.float32)
+
+    def zero_attention_context(self, batch_size):
+        """A tensor representing the zero attention context."""
+        state_size = utils.get_dimension(self.attention.states, 2)
+        shape = tf.stack([batch_size, state_size])
+        return tf.zeros(shape=shape, dtype=tf.float32)
+
     def _call_helper(self, query):  # pylint: disable=I0011,W0221
         activations = self._attention(query)
         maxlen = utils.get_dimension(activations, -1)
@@ -325,10 +337,10 @@ class LocationSoftmax(Layer):
             mask = tf.cast(tf.sequence_mask(self._sequence_length, maxlen), tf.float32)
         else:
             mask = None
-        weights = ops.softmax(activations, mask)
-        eweights = tf.expand_dims(weights, axis=2)
-        context = tf.reduce_sum(self._attention.states * eweights, axis=1)
-        return weights, context
+        location = ops.softmax(activations, mask)
+        weights = tf.expand_dims(location, axis=2)
+        context = tf.reduce_sum(self._attention.states * weights, axis=1)
+        return location, context
 
     def __call__(self, query, scope=None):  # pylint: disable=I0011,W0221
         return super(LocationSoftmax, self).__call__(query, scope=scope)
@@ -468,8 +480,6 @@ class PointingDecoder(Layer):
                  location_softmax, pointing_softmax_output,
                  out_sequence_length,
                  emit_out_feedback_fit=None,
-                 emit_out_init=None,
-                 cell_out_init=None, cell_state_init=None,
                  parallel_iterations=None, swap_memory=False,
                  trainable=True, scope='PointingDecoder'):
         """Initialize a new instance.
@@ -485,12 +495,6 @@ class PointingDecoder(Layer):
             length so that it can be fed back to the decoder cell, concatenated with the
             previous output and the attention context. If None, the output is fed
             as-is but this scenario will surely work with fixed length input states.
-          emit_out_init: a 2D tensor of shape [batch_size, shortlist_size + timesteps]
-            representing the initialization value for the output.
-          cell_out_init: a 2D tensor of shape [batch_size, decoder_out_size]
-            representing the initialization value for the decoder output.
-          cell_state_init: a 2D tensor of shape [batch_size, decoder_cell_state]
-            representing the initialization value for the decoder cell state.
           parallel_iterations: (Default: 32). The number of iterations to run in parallel.
             Those operations which do not have any temporal dependency and can be run in
             parallel, will be. This parameter trades off time for space. Values >> 1 use more
@@ -505,13 +509,12 @@ class PointingDecoder(Layer):
 
         super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
         self._decoder_cell = decoder_cell
-        self._sequence_length = out_sequence_length
         self._location_softmax = location_softmax
         self._pointing_softmax_output = pointing_softmax_output
-        self._emit_out_init = emit_out_init
+        self._sequence_length = out_sequence_length
         self._emit_out_feedback_fit = emit_out_feedback_fit
-        self._cell_out_init = cell_out_init
-        self._cell_state_init = cell_state_init
+        if self._emit_out_feedback_fit is None:
+            self._emit_out_feedback_fit = lambda tensor: tensor
         self._parallel_iterations = parallel_iterations
         self._swap_memory = swap_memory
         self._batch_size = None
@@ -520,20 +523,17 @@ class PointingDecoder(Layer):
         states = self._location_softmax.attention.states
         self._batch_size = utils.get_dimension(states, 0)
         self._pointing_size = utils.get_dimension(states, 1)
-        if self._emit_out_init is None:
-            self._emit_out_init = self._pointing_softmax_output.zero_output(
-                self._batch_size, self._pointing_size)
-
-        if self._cell_out_init is None:
-            cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
-            self._cell_out_init = tf.zeros(cell_out_shape)
-
-        if self._cell_state_init is None:
-            self._cell_state_init = self._decoder_cell.zero_state(
-                self._batch_size, dtype=tf.float32)
-
-        if self._emit_out_feedback_fit is None:
-            self._emit_out_feedback_fit = lambda tensor: tensor
+        self._emit_out_init = self._pointing_softmax_output.zero_output(
+            self._batch_size, self._pointing_size)
+        cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
+        self._cell_out_init = tf.zeros(cell_out_shape)
+        self._cell_state_init = self._decoder_cell.zero_state(self._batch_size, dtype=tf.float32)
+        self._location_init = self._location_softmax.zero_location_softmax(self._batch_size)
+        self._attention_init = self._location_softmax.zero_attention_context(self._batch_size)
+        self._feedback_init = self._emit_out_feedback_fit(self._emit_out_init)
+        self._feedback_size = self._feedback_init.shape[-1].value
+        if self._feedback_size is None:
+            raise ValueError('The result of the feedback fit function must have defined size.')
 
     @property
     def emit_out_init(self):
@@ -550,66 +550,46 @@ class PointingDecoder(Layer):
         """Initialization for the cell state signal."""
         return self._cell_state_init
 
-    def _loop_fn(self, time, cell_output, cell_state, loop_state):
-
-        # Determin how many sequences are actually over and define
-        # a flag to check if all of them have been fully scanned.
-        if self._sequence_length is None:
-            batch_dim = utils.get_dimension(cell_output, 0)
-            elements_finished = tf.ones([batch_dim], tf.bool)
-        else:
-            elements_finished = (time >= self._sequence_length)
-
-        # Declare and initialize to `None` all the return arguments.
-        next_cell_input = None
-        next_cell_state = None
-        emit_output = None
-        next_loop_state = (None, None)
-        feedback = None
-
-        if cell_output is None:
-            # If the `cell_output` is None, it means we are at the very
-            # first iteration. In this case, we need to initialize the
-            # return arguments to their initial values.
-            cell_output = self._cell_out_init
-            next_cell_state = self._cell_state_init
-            emit_output = self._emit_out_init
-        else:
-            pointing_softmax, attention_context = loop_state
-            next_cell_state = cell_state
-            emit_output = self._pointing_softmax_output(
-                cell_output, pointing_softmax, attention_context)
-
-        # Evaluate the pointing scores and the attention context for
-        # the next step and pack them into the loop state.
-        pointing_softmax, attention_context = self._location_softmax(cell_output)
-        next_loop_state = (pointing_softmax, attention_context)
-
-        # Fit the output to be fed back.
-        feedback = self._emit_out_feedback_fit(emit_output)
-
-        # Pack the next input for the decoder cell. Such input is
-        # the concatenation of the current cell output (since it is
-        # a recurrent scenario), the current attention_context and
-        # the feedback coming from the output signal.
-        next_cell_input = tf.concat(
-            [cell_output, attention_context, feedback],
-            axis=1)
-
-        print('elements_finished: ' + str(elements_finished))
-        print('next_cell_input: ' + str(next_cell_input))
-        print('next_cell_state: ' + str(next_cell_state))
-        print('emit_output: ' + str(emit_output))
-        print('next_loop_state: ' + str(next_loop_state))
+    def _step(self, prev_cell_out, prev_cell_state, feedback, location, attention):
+        print(prev_cell_out)
+        print(attention)
+        print(feedback)
         print()
+        cell_input = tf.concat([prev_cell_out, attention, feedback], axis=1)
+        print(cell_input)
+        print(prev_cell_state)
+        cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
+        emit_out = self._pointing_softmax_output(cell_out, location, attention)
+        return cell_out, cell_state, emit_out
 
-        return (elements_finished, next_cell_input, next_cell_state,
-                emit_output, next_loop_state)
+    def _body(self, time, prev_cell_out, prev_cell_state,
+              prev_feedback, location, attention, emit_ta):
+        cell_out, cell_state, emit_out = self._step(
+            prev_cell_out, prev_cell_state, prev_feedback, location, attention)
+        emit_ta = emit_ta.write(time, emit_out)
+        feedback = self._emit_out_feedback_fit(emit_out)
+        query = tf.concat([cell_out, feedback], axis=-1)
+        location, attention = self._location_softmax(query)
+        time = time + 1
+        return (time, cell_out, cell_state, feedback, location, attention, emit_ta)
 
-    def _call_helper(self):    # pylint: disable=I0011,W0221
-        outputs_ta, _, _ = tf.nn.raw_rnn(self._decoder_cell, self._loop_fn)
-        outputs = outputs_ta.pack()
-        return outputs
+    # pylint: disable=I0011,W0221,W0235
+    def _call_helper(self):
+        time = tf.constant(0, dtype=tf.int32)
+        prev_cell_out = self._cell_out_init
+        prev_cell_state = self._cell_state_init
+        feedback = self._feedback_init
+        location = self._location_init
+        attention = self._attention_init
+        emit_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+        results = tf.while_loop(
+            cond=lambda t, *_: tf.reduce_any(tf.less(t, self._sequence_length)),
+            body=self._body,
+            loop_vars=[time, prev_cell_out, prev_cell_state,
+                       feedback, location, attention, emit_ta])
+        emit_ta_final = results[-1]
+        output = emit_ta_final.stack()
+        return output
 
     # pylint: disable=I0011,W0221,W0235
     def __call__(self):
