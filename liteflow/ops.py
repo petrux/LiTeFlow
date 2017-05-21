@@ -2,6 +2,9 @@
 
 import tensorflow as tf
 
+def _fix_last_dim(tensor, value):
+    tensor.set_shape(tensor.get_shape().as_list()[:-1] + [value])
+
 
 def _trim(tensor, width):
     """Trim the tensor along the -1 axis to the target width."""
@@ -50,10 +53,12 @@ def trim(tensor, width):
         [9, 9]]]
     ```
     """
-    return tf.cond(
+    result = tf.cond(
         tf.less_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _trim(tensor, width))
+    _fix_last_dim(result, width)
+    return result
 
 
 def _pad(tensor, width):
@@ -103,11 +108,12 @@ def pad(tensor, width):
         [9, 9, 9, 0]]]
     ```
     """
-    return tf.cond(
+    result = tf.cond(
         tf.greater_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _pad(tensor, width))
-
+    _fix_last_dim(result, width)
+    return result
 
 def _fit(tensor, width):
     actual = tf.shape(tensor)[-1]
@@ -210,7 +216,7 @@ def fit(tensor, width):
     result = tf.cond(tf.equal(actual, width),
                      lambda: tensor,
                      lambda: _fit(tensor, width))
-    result.set_shape(result.shape.as_list()[:-1] + [width])
+    _fix_last_dim(result, width)
     return result
 
 
