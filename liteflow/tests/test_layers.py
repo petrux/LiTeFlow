@@ -429,7 +429,7 @@ class _TestSmoke(tf.test.TestCase):
         state_size = 4
         attention_inner_size = 7
         shortlist_size = 3
-        # emit_out_feedback_size = 17
+        emit_out_feedback_size = 15
         decoder_out_size = 5
 
         attention_states = tf.placeholder(tf.float32, shape=[None, None, state_size])
@@ -444,12 +444,11 @@ class _TestSmoke(tf.test.TestCase):
             shortlist_size=shortlist_size,
             attention_sequence_length=attention_sequence_length,
             output_sequence_length=output_sequence_length,
-            emit_out_feedback_size=None,  # emit_out_feedback_size,
+            emit_out_feedback_size=emit_out_feedback_size,
             parallel_iterations=None,
             swap_memory=False,
             trainable=True)
         output = decoder()
-        print(output)
 
         act_attention_states = np.ones((batch_size, timesteps, state_size))
         act_attention_sequence_lengths = [6, 8]

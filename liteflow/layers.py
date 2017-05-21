@@ -530,6 +530,10 @@ class PointingDecoder(Layer):
         self._cell_state_init = self._decoder_cell.zero_state(self._batch_size, dtype=tf.float32)
         self._location_init = self._location_softmax.zero_location_softmax(self._batch_size)
         self._attention_init = self._location_softmax.zero_attention_context(self._batch_size)
+        self._feedback_init = self._emit_out_feedback_fit(self._emit_out_init)
+        self._feedback_size = self._feedback_init.shape[-1].value
+        if self._feedback_size is None:
+            raise ValueError('The result of the feedback fit function must have defined size.')
 
     @property
     def emit_out_init(self):
@@ -546,8 +550,12 @@ class PointingDecoder(Layer):
         """Initialization for the cell state signal."""
         return self._cell_state_init
 
-    def _step(self, prev_cell_out, prev_cell_state, prev_emit_out, location, attention):
-        cell_input = tf.concat([prev_cell_out, attention, prev_emit_out], axis=1)
+    def _step(self, prev_cell_out, prev_cell_state, feedback, location, attention):
+        print(prev_cell_out)
+        print(attention)
+        print(feedback)
+        print()
+        cell_input = tf.concat([prev_cell_out, attention, feedback], axis=1)
         print(cell_input)
         print(prev_cell_state)
         cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
@@ -555,21 +563,22 @@ class PointingDecoder(Layer):
         return cell_out, cell_state, emit_out
 
     def _body(self, time, prev_cell_out, prev_cell_state,
-              prev_emit_out, location, attention, emit_ta):
+              prev_feedback, location, attention, emit_ta):
         cell_out, cell_state, emit_out = self._step(
-            prev_cell_out, prev_cell_state, prev_emit_out, location, attention)
+            prev_cell_out, prev_cell_state, prev_feedback, location, attention)
         emit_ta = emit_ta.write(time, emit_out)
         feedback = self._emit_out_feedback_fit(emit_out)
         query = tf.concat([cell_out, feedback], axis=-1)
         location, attention = self._location_softmax(query)
-        return (time, cell_out, cell_state, emit_out, location, attention, emit_ta)
+        time = time + 1
+        return (time, cell_out, cell_state, feedback, location, attention, emit_ta)
 
     # pylint: disable=I0011,W0221,W0235
     def _call_helper(self):
         time = tf.constant(0, dtype=tf.int32)
         prev_cell_out = self._cell_out_init
         prev_cell_state = self._cell_state_init
-        prev_emit_out = self.emit_out_init
+        feedback = self._feedback_init
         location = self._location_init
         attention = self._attention_init
         emit_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
@@ -577,7 +586,7 @@ class PointingDecoder(Layer):
             cond=lambda t, *_: tf.reduce_any(tf.less(t, self._sequence_length)),
             body=self._body,
             loop_vars=[time, prev_cell_out, prev_cell_state,
-                       prev_emit_out, location, attention, emit_ta])
+                       feedback, location, attention, emit_ta])
         emit_ta_final = results[-1]
         output = emit_ta_final.stack()
         return output
