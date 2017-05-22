@@ -495,6 +495,9 @@ class PointingDecoder(Layer):
             length so that it can be fed back to the decoder cell, concatenated with the
             previous output and the attention context. If None, the output is fed
             as-is but this scenario will surely work with fixed length input states.
+            **NOTA BENE**: `the emit_out_feedback_fit` function must return a tensor with the
+            last dimension statically defined. This function will be invoked once during
+            the initialization of the instance on the output initialization tensor.
           parallel_iterations: (Default: 32). The number of iterations to run in parallel.
             Those operations which do not have any temporal dependency and can be run in
             parallel, will be. This parameter trades off time for space. Values >> 1 use more
@@ -504,7 +507,9 @@ class PointingDecoder(Layer):
             for back prop from GPU to CPU. This allows training RNNs which would typically not
             fit on a single GPU, with very minimal (or no) performance penalty.
           trainable: if `True`, the created variables will be trainable.
-          scope: VariableScope for the created subgraph;.
+          scope: VariableScope for the created subgraph.
+
+
         """
 
         super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
