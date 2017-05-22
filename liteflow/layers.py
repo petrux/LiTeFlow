@@ -551,13 +551,7 @@ class PointingDecoder(Layer):
         return self._cell_state_init
 
     def _step(self, prev_cell_out, prev_cell_state, feedback, location, attention):
-        print(prev_cell_out)
-        print(attention)
-        print(feedback)
-        print()
         cell_input = tf.concat([prev_cell_out, attention, feedback], axis=1)
-        print(cell_input)
-        print(prev_cell_state)
         cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
         emit_out = self._pointing_softmax_output(cell_out, location, attention)
         return cell_out, cell_state, emit_out

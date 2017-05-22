@@ -462,7 +462,7 @@ class _TestSmoke(tf.test.TestCase):
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            print(sess.run(output, feed_dict))
+            sess.run(output, feed_dict)
 
 if __name__ == '__main__':
     tf.test.main()
