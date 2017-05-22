@@ -29,6 +29,7 @@ class FitTrimPadTest(tf.test.TestCase):
         shape = [None, None, None]
         input_ = tf.placeholder(dtype=tf.float32, shape=shape)
         output = ops.fit(input_, width)
+        self.assertEqual(output.get_shape().as_list()[-1], width)
 
         input_actual = np.random.rand(batch, length, width)  # pylint: disable=I0011,E1101
         output_expected = input_actual
