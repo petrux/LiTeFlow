@@ -245,6 +245,7 @@ class TestPointingDecoder(tf.test.TestCase):
         state_size = 4
         cell_output_size = 5
         cell_state_size = 2 * cell_output_size
+        emit_out_size = shortlist_size + timesteps
 
         states = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
         batch_dim = utils.get_dimension(states, 0)
@@ -252,6 +253,8 @@ class TestPointingDecoder(tf.test.TestCase):
         out_sequence_length = location_dim * tf.ones(dtype=tf.int32, shape=[batch_dim])
 
         decoder_cell = mock.Mock()
+        decoder_cell.output_size = cell_output_size
+
         decoder_cell.output_size = cell_output_size
         cell_out = 3 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
         cell_state = 4 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
@@ -265,12 +268,21 @@ class TestPointingDecoder(tf.test.TestCase):
         emit_out_dim = shortlist_size + location_dim
         emit_out = 23 * tf.ones(tf.stack([batch_dim, emit_out_dim]))
         pointing_softmax_output.side_effect = [emit_out]
+        pointing_softmax_output.zero_output.side_effect = [
+            tf.zeros(shape=tf.stack([batch_dim, location_dim]), dtype=tf.float32)]
+
+        emit_out_feedback_fit = mock.Mock()
+        def _feedback(value):
+            value.set_shape(value.shape.as_list()[:-1] + [emit_out_size])
+            return value
+        emit_out_feedback_fit.side_effect = _feedback
 
         layer = layers.PointingDecoder(
             decoder_cell=decoder_cell,
             out_sequence_length=out_sequence_length,
             location_softmax=location_softmax,
-            pointing_softmax_output=pointing_softmax_output)
+            pointing_softmax_output=pointing_softmax_output,
+            emit_out_feedback_fit=emit_out_feedback_fit)
 
         prev_cell_out = 1 * tf.ones(shape=tf.stack([batch_dim, cell_output_size]))
         prev_cell_state = 2 * tf.ones(shape=tf.stack([batch_dim, cell_state_size]))
@@ -332,9 +344,12 @@ class TestPointingDecoder(tf.test.TestCase):
         decoder_cell.output_size = cell_output_size
 
         pointing_softmax_output = mock.Mock()
+        emit_out_init = tf.zeros(shape=tf.stack([batch_dim, location_dim]), dtype=tf.float32)
+        pointing_softmax_output.zero_output.side_effect = [emit_out_init]
 
         emit_out_feedback_fit = mock.Mock()
         def _feedback(value):
+            value.set_shape(value.shape.as_list()[:-1] + [emit_out_size])
             return value
         emit_out_feedback_fit.side_effect = _feedback
 
@@ -369,14 +384,23 @@ class TestPointingDecoder(tf.test.TestCase):
         result = layer._body(time, prev_cell_out, prev_cell_state,
                              prev_emit_out, location, attention, emit_ta)
         self.assertEqual(7, len(result))
-        self.assertEqual(result[0], time)
         self.assertEqual(result[1], cell_out)
         self.assertEqual(result[2], cell_state)
         self.assertEqual(result[3], emit_out)
         self.assertEqual(result[4], next_location)
         self.assertEqual(result[5], next_attention)
 
-        # ASSERTIONS ON EMIT OUT
+        # ASSERTIONS ON TIME.
+        next_time = result[0]
+        feed = {states: np.ones((batch_size, timesteps, state_size))}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_time, act_next_time = sess.run(
+                fetches=[time, next_time],
+                feed_dict=feed)
+            self.assertEqual(act_next_time, act_time + 1)
+
+        # ASSERTIONS ON EMIT OUT.
         act_emit_t = result[6].stack()
         self.assertEqual(3, act_emit_t.shape.ndims)
         exp_emit_length = 1
@@ -392,7 +416,10 @@ class TestPointingDecoder(tf.test.TestCase):
             self.assertAllEqual(exp_emit_first, act_emit_first)
 
         # ASSERTION ON FEEDBACK FIT.
-        emit_out_feedback_fit.assert_called_once_with(emit_out)
+        self.assertEqual(2, emit_out_feedback_fit.call_count)
+        calls = emit_out_feedback_fit.call_args_list
+        self.assertEqual(emit_out_init, calls[0][0][0])
+        self.assertEqual(emit_out, calls[1][0][0])
 
         # ASSERTIONS ON _step.
         _step.assert_called_once_with(
@@ -409,20 +436,7 @@ class TestPointingDecoder(tf.test.TestCase):
             exp_query, act_query = sess.run([exp_query_t, act_query_t], feed)
             self.assertAllEqual(exp_query, act_query)
 
-
-class _TestSmoke(tf.test.TestCase):
-    """Smoke test for pointing decoder."""
-
-    import unittest
-
-    _SEED = 23
-
-    def setUp(self):
-        tf.reset_default_graph()
-        tf.set_random_seed(self._SEED)
-        np.random.seed(seed=self._SEED)  # pylint: disable=I0011,E1101
-
-    def test_smoke(self):
+    def test_masking(self):
         """Build a pointer decoder and test that it works."""
         batch_size = 2
         timesteps = 10
@@ -450,7 +464,8 @@ class _TestSmoke(tf.test.TestCase):
             trainable=True)
         output = decoder()
 
-        act_attention_states = np.ones((batch_size, timesteps, state_size))
+        # pylint: disable=I0011,E1101
+        act_attention_states = np.random.rand(batch_size, timesteps, state_size)
         act_attention_sequence_lengths = [6, 8]
         act_output_sequence_length = [5, 7]
 
@@ -462,7 +477,19 @@ class _TestSmoke(tf.test.TestCase):
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            sess.run(output, feed_dict)
+            act_output = sess.run(output, feed_dict)
+
+        act_outout_steps = max(act_output_sequence_length)
+        act_output_shape = (batch_size, act_outout_steps, shortlist_size + timesteps)
+        self.assertEqual(act_output_shape, act_output.shape)
+
+        # assertions on masking.
+        for i, length in enumerate(act_output_sequence_length):
+            output = act_output[i]
+            for j, vector in enumerate(output):
+                if j >= length:
+                    self.assertAllEqual(np.zeros_like(vector), vector)
+
 
 if __name__ == '__main__':
     tf.test.main()
