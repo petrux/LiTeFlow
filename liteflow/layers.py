@@ -495,6 +495,9 @@ class PointingDecoder(Layer):
             length so that it can be fed back to the decoder cell, concatenated with the
             previous output and the attention context. If None, the output is fed
             as-is but this scenario will surely work with fixed length input states.
+            **NOTA BENE**: `the emit_out_feedback_fit` function must return a tensor with the
+            last dimension statically defined. This function will be invoked once during
+            the initialization of the instance on the output initialization tensor.
           parallel_iterations: (Default: 32). The number of iterations to run in parallel.
             Those operations which do not have any temporal dependency and can be run in
             parallel, will be. This parameter trades off time for space. Values >> 1 use more
@@ -504,7 +507,9 @@ class PointingDecoder(Layer):
             for back prop from GPU to CPU. This allows training RNNs which would typically not
             fit on a single GPU, with very minimal (or no) performance penalty.
           trainable: if `True`, the created variables will be trainable.
-          scope: VariableScope for the created subgraph;.
+          scope: VariableScope for the created subgraph.
+
+
         """
 
         super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
@@ -518,13 +523,13 @@ class PointingDecoder(Layer):
         self._parallel_iterations = parallel_iterations
         self._swap_memory = swap_memory
         self._batch_size = None
-        self._pointing_size = None
+        self._location_size = None
 
         states = self._location_softmax.attention.states
         self._batch_size = utils.get_dimension(states, 0)
-        self._pointing_size = utils.get_dimension(states, 1)
+        self._location_size = utils.get_dimension(states, 1)
         self._emit_out_init = self._pointing_softmax_output.zero_output(
-            self._batch_size, self._pointing_size)
+            self._batch_size, self._location_size)
         cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
         self._cell_out_init = tf.zeros(cell_out_shape)
         self._cell_state_init = self._decoder_cell.zero_state(self._batch_size, dtype=tf.float32)
@@ -551,13 +556,7 @@ class PointingDecoder(Layer):
         return self._cell_state_init
 
     def _step(self, prev_cell_out, prev_cell_state, feedback, location, attention):
-        print(prev_cell_out)
-        print(attention)
-        print(feedback)
-        print()
         cell_input = tf.concat([prev_cell_out, attention, feedback], axis=1)
-        print(cell_input)
-        print(prev_cell_state)
         cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
         emit_out = self._pointing_softmax_output(cell_out, location, attention)
         return cell_out, cell_state, emit_out
@@ -589,7 +588,10 @@ class PointingDecoder(Layer):
                        feedback, location, attention, emit_ta])
         emit_ta_final = results[-1]
         output = emit_ta_final.stack()
-        return output
+        output = tf.transpose(output, [1, 0, 2])
+        mask = tf.sequence_mask(self._sequence_length, dtype=tf.float32)
+        mask = tf.expand_dims(mask, axis=2)
+        return output * mask
 
     # pylint: disable=I0011,W0221,W0235
     def __call__(self):

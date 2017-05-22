@@ -2,6 +2,9 @@
 
 import tensorflow as tf
 
+def _fix_last_dim(tensor, value):
+    tensor.set_shape(tensor.get_shape().as_list()[:-1] + [value])
+
 
 def _trim(tensor, width):
     """Trim the tensor along the -1 axis to the target width."""
@@ -14,18 +17,18 @@ def _trim(tensor, width):
 def trim(tensor, width):
     """Trim the tensor on the -1 axis.
 
-    Trims a given 3D tensor of shape `[batch, length, in_width]` to
-    a smaller tensor of shape `[batch, length, width]`, along the -1
-    axis. If the `width` argument is greater or equal than the actual
-    width of the tensor, no operation is performed.
+    Trim a given tensor of shape `[..., in_width]` to a smaller tensor
+    of shape `[..., width]`, along the -1 axis. If the `width` argument
+    is greater or equal than the actual width of the tensor, no operation
+    is performed.
 
     Arguments:
-      tensor: a 3D tf.Tensor of shape `[batch, length, in_width]`.
+      tensor: a 3D tf.Tensor of shape `[..., in_width]`.
       width: a `int` representing the target value of the 3rd
         dimension of the output tensor.
 
     Returns:
-      a 3D tensor of shape `[batch, length, width]` where the
+      a 3D tensor of shape `[..., width]` where the
         third dimension is the minimum between the input width
         and the value of the `width` argument.
 
@@ -50,10 +53,11 @@ def trim(tensor, width):
         [9, 9]]]
     ```
     """
-    return tf.cond(
+    result = tf.cond(
         tf.less_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _trim(tensor, width))
+    return result
 
 
 def _pad(tensor, width):
@@ -67,18 +71,18 @@ def _pad(tensor, width):
 def pad(tensor, width):
     """Padd the tensor on the -1 axis.
 
-    Trims a given 3D tensor of shape `[batch, length, in_width]` to
-    a larger tensor of shape `[batch, length, width]`, on the -1
-    axis. If the `width` argument is less or equal than the actual
-    width of the tensor, no operation is performed.
+    Pad a given 3D tensor of shape `[..., in_width]` to a larger tensor
+    of shape `[batch, length, width]`, on the -1 axis. If the `width`
+    argument is less or equal than the actual width of the tensor, no
+    operation is performed.
 
     Arguments:
-      tensor: a 3D tf.Tensor of shape `[batch, length, in_width]`.
-      width: a `int` representing the target value of the 3rd
+      tensor: a tensor of shape `[..., in_width]`.
+      width: a `int` representing the target value of the last
         dimension of the output tensor.
 
     Returns:
-      a 3D tensor of shape `[batch, length, width]` where the
+      a 3D tensor of shape `[..., width]` where the
         third dimension is the maximum between the input width
         and the value of the `width` argument.
 
@@ -103,17 +107,17 @@ def pad(tensor, width):
         [9, 9, 9, 0]]]
     ```
     """
-    return tf.cond(
+    result = tf.cond(
         tf.greater_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _pad(tensor, width))
-
+    return result
 
 def _fit(tensor, width):
     actual = tf.shape(tensor)[-1]
     result = tf.cond(tf.greater(actual, width),
-                     lambda: _trim(tensor, width),  # trim
-                     lambda: _pad(tensor, width))  # pad
+                     lambda: _trim(tensor, width),
+                     lambda: _pad(tensor, width))
     return result
 
 
@@ -210,7 +214,7 @@ def fit(tensor, width):
     result = tf.cond(tf.equal(actual, width),
                      lambda: tensor,
                      lambda: _fit(tensor, width))
-    result.set_shape(result.shape.as_list()[:-1] + [width])
+    _fix_last_dim(result, width)
     return result
 
 
