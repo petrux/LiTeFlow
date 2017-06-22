@@ -310,3 +310,21 @@ def timeslice(tensor, indices, name='timeslice'):
         indices = tf.stack([batch_range, indices], axis=1)
         result = tf.gather_nd(tensor, indices)
         return result
+
+
+def safe_div(numerator, denominator, name='safe_div'):
+    """Divides two values, returning 0 if the denominator is <= 0.
+
+    Args:
+      numerator: A real `Tensor`.
+      denominator: A real `Tensor`, with dtype matching `numerator`.
+      name: Name for the returned op.
+
+    Returns:
+      0 if `denominator` <= 0, else `numerator` / `denominator`
+    """
+    return tf.where(
+        tf.greater(denominator, 0),
+        tf.truediv(numerator, denominator),
+        0,
+        name=name)
