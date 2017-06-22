@@ -101,7 +101,7 @@ class StreamingAverage(StreamingComputation):
     This class implements the __call__ interface and can be used as the standard TensorFlow
     streaming average (the `tf.metrics.mean`). It takes as arguments:
       `values`: a `Tensor` of arbitrary dimensions.
-      `weights`: pptional `Tensor` whose rank is either `0`, or the same rank as values,
+      `weights`: optional `Tensor` whose rank is either `0`, or the same rank as values,
         and must be broadcastable to values (i.e., all dimensions must be either `1`, or
         the same as the corresponding values dimension). It contains the weights for summing
         up all the elements in `values`.
