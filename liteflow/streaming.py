@@ -13,11 +13,16 @@ def _local_variable(name, init_value=0.0, dtype=tf.float32, trainable=False):
         dtype=dtype,
         initial_value=init_value,
         trainable=trainable,
-        collections=tf.GraphKeys.LOCAL_VARIABLES)
+        collections=[tf.GraphKeys.LOCAL_VARIABLES])
 
 
 class StreamingComputation(object):
-    """Base contract for a streaming computation unit."""
+    """Base contract for a streaming computation unit.
+
+    This absttract class describes the basic contract for a streaming computation
+    unit, which is intended to compute some value over a stream of batches, together
+    with the same value for each batch.
+    """
 
     __metaclass__ = abc.ABCMeta
 
@@ -75,7 +80,40 @@ class StreamingComputation(object):
 
 
 class StreamingAverage(StreamingComputation):
-    """Streaming average computation unit."""
+    """Computes the streaming average over a stream of batches.
+
+    This class implements a streaming average computation over a strem
+    of batches (together with the average computed for each batch). All the
+    meaningful `Tensor`s and `Op`s are exposed as properties:
+      `value`: the streaming average value.
+      `count`: the number of elements seen so far; this tensor is created as
+        a local variable and can be found in the `tf.GraphKeys.LOCAL_VARIABLES`
+        collection.
+      `total`: the sum of the values seen so far; as `count`, this tensor is
+        created as a local variable and can be found in the `tf.GraphKeys.LOCAL_VARIABLES`
+        collection.
+      `batch_value`: same as `value` but for the current batch.
+      `batch_count`: same as `count` but for the current batch.
+      `batch_total`: same as `total` but for the current batch.
+      `update_op`: operator that updates `total` and `count`.
+      `reset_op`: operator that resets `total` and `count`
+
+    This class implements the __call__ interface and can be used as the standard TensorFlow
+    streaming average (the `tf.metrics.mean`). It takes as arguments:
+      `values`: a `Tensor` of arbitrary dimensions.
+      `weights`: pptional `Tensor` whose rank is either `0`, or the same rank as values,
+        and must be broadcastable to values (i.e., all dimensions must be either `1`, or
+        the same as the corresponding values dimension). It contains the weights for summing
+        up all the elements in `values`.
+      `scope`: a `str` representing the variable scope name used for building the
+        fragment of the computational graph that computes the streaming average.
+
+    and retuns a pair of:
+      `mean`: a `Tensor` representing the current mean, which is a reference
+        to `self.value`.
+      `update_op`: an `Op` that updates the streaming value, which is a reference
+        to `self.update_op`.
+    """
 
     def __init__(self, name='StreamingAverage'):
         super(StreamingAverage, self).__init__(name=name)
@@ -94,11 +132,12 @@ class StreamingAverage(StreamingComputation):
 
     @property
     def count(self):
+        """The number of items seen so far, local variable."""
         return self._count
 
     @property
     def total(self):
-        """The total value summed up so far."""
+        """The total value summed up so far, local variable."""
         return self._value
 
     @property
@@ -125,19 +164,26 @@ class StreamingAverage(StreamingComputation):
     def compute(self, values, weights=None, scope=None):
         """Compute the streaming weighted average.
 
+        This method builds the fragment of computational graph that computes the streaming
+        average, properly setting up all the properties of the class (`Tensor`s and `Op`s).
+
         Arguments:
-          values:
-          weights:
-          scope:
+          values: a `Tensor` of arbitrary dimensions.
+          weights: pptional `Tensor` whose rank is either `0`, or the same rank
+            as values, and must be broadcastable to values (i.e., all dimensions must
+            be either `1`, or the same as the corresponding values dimension). It contains
+            the weights for summing up all the elements in `values`.
+          scope: a `str` representing the variable scope name used for building the
+            fragment of the computational graph that computes the streaming average.
         """
         # pylint: disable=I0011,E1129
         with tf.variable_scope(scope or self._name) as scope:
             self._count = _local_variable('count')
             self._total = _local_variable('total')
 
-            if weights:
+            if weights is not None:
                 values = tf.multiply(values, weights)
-                self._batch_count = tf.reduce_sum(weights, 'batch_count')
+                self._batch_count = tf.reduce_sum(weights, name='batch_count')
             else:
                 self._batch_count = tf.to_float(tf.size(values), name='batch_count')
 
@@ -159,12 +205,26 @@ class StreamingAverage(StreamingComputation):
 
     # pylint: disable=I0011,W0221
     def __call__(self, values, weights=None, scope=None):
-        """Build the streaming average.
+        """Computes the streaming average.
+
+        This method builds the fragment of computational graph that computes the streaming
+        average, returnins a variable representing the actual streaming average value and
+        an `Op` to update such value.
 
         Arguments:
+          values: a `Tensor` of arbitrary dimensions.
+          weights: pptional `Tensor` whose rank is either `0`, or the same rank
+            as values, and must be broadcastable to values (i.e., all dimensions must
+            be either `1`, or the same as the corresponding values dimension). It contains
+            the weights for summing up all the elements in `values`.
+          scope: a `str` representing the variable scope name used for building the
+            fragment of the computational graph that computes the streaming average.
 
         Returns:
-
+          mean: a `Tensor` representing the current mean, which is a reference
+            to `self.value`.
+          update_op: an `Op` that updates the streaming value, which is a reference
+            to `self.update_op`.
         """
         self.compute(values, weights=weights, scope=scope)
         return self.value, self.update_op
