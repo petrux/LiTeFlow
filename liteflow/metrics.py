@@ -68,14 +68,9 @@ class StreamingMetric(streaming.StreamingComputation):
     """
 
     def __init__(self, func, average=None, name=None):
-        average = average or streaming.StreamingAverage()
-        if not isinstance(average, streaming.StreamingAverage):
-            raise TypeError(
-                '`average` must be an instance implementing `%s`, found `%s` instead.'
-                % (streaming.StreamingAverage.__name__, average.__class__.__name__))
         super(StreamingMetric, self).__init__(name=name)
         self._func = func
-        self._avg = average
+        self._avg = average or streaming.StreamingAverage()
 
     @property
     def value(self):
@@ -163,8 +158,8 @@ class StreamingMetric(streaming.StreamingComputation):
             of the graph.
 
         Returns:
-          mean: a `Tensor` representing the current mean.
-          update_op: an `Op` that updates the streaming value.
+          value: a `Tensor` representing the streaming average value.
+          update_op: an `Op` that updates the streaming average value.
         """
         self.compute(targets, predictions, weights,
                      metrics_collections=metrics_collections,

@@ -169,7 +169,7 @@ class StreamingAverage(StreamingComputation):
 
         Arguments:
           values: a `Tensor` of arbitrary dimensions.
-          weights: pptional `Tensor` whose rank is either `0`, or the same rank
+          weights: optional `Tensor` whose rank is either `0`, or the same rank
             as values, and must be broadcastable to values (i.e., all dimensions must
             be either `1`, or the same as the corresponding values dimension). It contains
             the weights for summing up all the elements in `values`.

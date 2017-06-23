@@ -2,6 +2,10 @@
 
 import tensorflow as tf
 
+
+EPSILON = 10e-8
+
+
 def _fix_last_dim(tensor, value):
     tensor.set_shape(tensor.get_shape().as_list()[:-1] + [value])
 
