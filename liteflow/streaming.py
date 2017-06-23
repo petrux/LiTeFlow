@@ -105,8 +105,8 @@ class StreamingAverage(StreamingComputation):
         and must be broadcastable to values (i.e., all dimensions must be either `1`, or
         the same as the corresponding values dimension). It contains the weights for summing
         up all the elements in `values`.
-      `scope`: a `str` representing the variable scope name used for building the
-        fragment of the computational graph that computes the streaming average.
+      `scope`: a `str`  or a `tf.VariableScope` used for building the fragment
+        of the computational graph that computes the streaming average.
 
     and retuns a pair of:
       `mean`: a `Tensor` representing the current mean, which is a reference
@@ -173,8 +173,8 @@ class StreamingAverage(StreamingComputation):
             as values, and must be broadcastable to values (i.e., all dimensions must
             be either `1`, or the same as the corresponding values dimension). It contains
             the weights for summing up all the elements in `values`.
-          scope: a `str` representing the variable scope name used for building the
-            fragment of the computational graph that computes the streaming average.
+          scope: a `str`  or a `tf.VariableScope` used for building the fragment
+            of the computational graph that computes the streaming average.
         """
         # pylint: disable=I0011,E1129
         with tf.variable_scope(scope or self._name) as scope:
@@ -217,8 +217,8 @@ class StreamingAverage(StreamingComputation):
             as values, and must be broadcastable to values (i.e., all dimensions must
             be either `1`, or the same as the corresponding values dimension). It contains
             the weights for summing up all the elements in `values`.
-          scope: a `str` representing the variable scope name used for building the
-            fragment of the computational graph that computes the streaming average.
+          scope: a `str`  or a `tf.VariableScope` used for building the fragment
+            of the computational graph that computes the streaming average.
 
         Returns:
           mean: a `Tensor` representing the current mean, which is a reference
