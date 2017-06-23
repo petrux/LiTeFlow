@@ -69,5 +69,25 @@ class TestAccuracy(tf.test.TestCase):
         self.assertAllEqual(exp_accuracy, act_accuracy)
 
 
+class TestPerSentenceAccuracy(tf.test.TestCase):
+    """Test class for the liteflow.metrics.per_sentence_accuracy function."""
+
+    def test_default(self):
+        """Default test case."""
+        targets = tf.constant([[1, 2, 3, 4], [1, 2, 3, 4]], dtype=tf.int32)
+        predictions = tf.constant([[1, 2, 3, 0], [1, 2, 3, 0]], dtype=tf.int32)
+        weights = tf.constant([[1, 1, 1, 1], [1, 1, 1, 0]], dtype=tf.float32)
+
+        accuracy_t, weights_t = metrics.per_sentence_accuracy(targets, predictions, weights)
+        exp_accuracy = np.asarray([0, 1], dtype=np.float32)  # pylint: disable=I0011,E1101
+        exp_weights = np.asarray([1, 1], dtype=np.float32)  # pylint: disable=I0011,E1101
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_accuracy, act_weights = sess.run([accuracy_t, weights_t])
+        self.assertAllEqual(act_accuracy, exp_accuracy)
+        self.assertAllEqual(act_weights, exp_weights)
+
+
 if __name__ == '__main__':
     tf.test.main()

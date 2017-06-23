@@ -328,3 +328,19 @@ def safe_div(numerator, denominator, name='safe_div'):
         tf.truediv(numerator, denominator),
         0,
         name=name)
+
+
+def logical_impl(x, y):  # pylint: disable=I0011,C0103
+    """Returns the truth value of x -> y element-wise.
+
+    *NOTE*: `logical_impl` supports broadcasting. More about broadcasting
+    [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+    Arguments:
+      x: a `Tensor` of type `bool`.
+      y: a `Tensor` of type `bool`.
+
+    Returns:
+      a `Tensor` of type bool.
+    """
+    return tf.logical_or(tf.logical_not(x), y)
