@@ -116,7 +116,7 @@ class StreamingMetric(streaming.StreamingComputation):
         """Reset the streaming computation of the metric."""
         return self._avg.reset_op
 
-    def compute(self, targets, predictions, weights,
+    def compute(self, targets, predictions, weights=None,
                 metrics_collections=None,
                 updates_collections=None,
                 scope=None):
@@ -144,7 +144,7 @@ class StreamingMetric(streaming.StreamingComputation):
             utils.add_to_collections(updates_collections, self.update_op)
 
     # pylint: disable=I0011,W0221
-    def __call__(self, targets, predictions, weights,
+    def __call__(self, targets, predictions, weights=None,
                  metrics_collections=None,
                  updates_collections=None,
                  scope=None):
@@ -172,7 +172,7 @@ class StreamingMetric(streaming.StreamingComputation):
         return self.value, self.update_op
 
 
-def accuracy(targets, predictions, weights):
+def accuracy(targets, predictions, weights=None):
     """Computes the categorical accuracy.
 
     Given a set of ground truth values and a set of predicted labels as tensors of
@@ -191,7 +191,7 @@ def accuracy(targets, predictions, weights):
         the model -- so that the predicted label is the one coming from argmax over the
         last dimension. Alternatively it can be of the same shape, `dtype` and format of
         `target`, and it will considered as the predicted labels.
-      weights: coefficients for the loss. This must be scalar or of same rank as `target`.
+      weights: coefficients for the metric. This must be scalar or of same rank as `target`.
 
     Returns:
       values: a `Tensor` of `dtype=tf.float32` and of the same shape as `targest`
@@ -213,11 +213,12 @@ def accuracy(targets, predictions, weights):
 
     is_equal = tf.equal(targets, predictions)
     is_equal = tf.cast(is_equal, tf.float32)
-    is_equal = tf.multiply(is_equal, weights)
+    if weights is not None:
+        is_equal = tf.multiply(is_equal, weights)
     return is_equal, weights
 
 
-def per_sentence_accuracy(targets, predictions, weights):
+def per_sentence_accuracy(targets, predictions, weights=None):
     """Computes the per-sentence accuracy.
 
     Given a set of ground truth values and a set of predicted labels as tensors of
@@ -236,7 +237,7 @@ def per_sentence_accuracy(targets, predictions, weights):
         the model -- so that the predicted label is the one coming from argmax over the
         last dimension. Alternatively it can be of the same shape, `dtype` and format of
         `target`, and it will considered as the predicted labels.
-      weights: coefficients for the loss. This must be scalar or of same rank as `target`.
+      weights: coefficients for the metric. This must be scalar or of same rank as `target`.
 
     Returns:
       values: a `Tensor` of `dtype=tf.float32` and of [d_0, d_1, ..., d_{r-2}]
@@ -246,7 +247,10 @@ def per_sentence_accuracy(targets, predictions, weights):
         representing the weighted scheme for the streaming average on `values`, which
         is the same tensor of the input `weights` argument.
     """
-    is_equal, weights = accuracy(targets, predictions, weights)
-    values = ops.logical_impl(tf.cast(weights, tf.bool), tf.cast(is_equal, tf.bool))
+    values, weights = accuracy(targets, predictions, weights)
+    values = tf.cast(values, tf.bool)
+    if weights is not None:
+        weights = tf.cast(weights, tf.bool)
+        values = ops.logical_impl(weights, values)
     values = tf.reduce_all(values, axis=-1)
-    return tf.cast(values, tf.float32), tf.ones_like(values)
+    return tf.cast(values, tf.float32), tf.cast(tf.ones_like(values), tf.float32)
