@@ -1,5 +1,7 @@
 """Various utilities."""
 
+import six
+
 import tensorflow as tf
 
 
@@ -129,3 +131,16 @@ def get_dimension(tensor, dim, ensure_tensor=False):
     if ensure_tensor:
         return tf.convert_to_tensor(dimension.value)
     return dimension.value
+
+
+def add_to_collections(names, value):
+    """Add a tensor to a set of collections (or a single one).
+
+    Arguments:
+      names:
+      value:
+    """
+    if isinstance(names, six.string_types):
+        names = [names]
+    for name in names:
+        tf.add_to_collection(name, value)
