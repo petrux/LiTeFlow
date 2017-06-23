@@ -68,13 +68,14 @@ class StreamingMetric(streaming.StreamingComputation):
     """
 
     def __init__(self, func, average=None, name=None):
+        average = average or streaming.StreamingAverage()
         if not isinstance(average, streaming.StreamingAverage):
             raise TypeError(
                 '`average` must be an instance implementing `%s`, found `%s` instead.'
                 % (streaming.StreamingAverage.__name__, average.__class__.__name__))
         super(StreamingMetric, self).__init__(name=name)
         self._func = func
-        self._avg = average or streaming.StreamingAverage()
+        self._avg = average
 
     @property
     def value(self):
