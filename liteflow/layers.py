@@ -462,6 +462,73 @@ class PointingSoftmaxOutput(Layer):
             decoder_out, location_softmax, attention_context)
 
 
+class DecoderBase(object):
+
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, trainable=True, name=None, **kwargs):
+        self._trainable = trainable
+        self._name = name or self.__class__.__name__
+
+    @abc.abstractmethod
+    def init_input(self):
+        """Initial input state for the decoder.
+
+        Returns:
+          a `Tensor` of shape `[batch_size, input_size]` representing the initial
+          input tensor for the decoder.
+        """
+        pass
+
+    @abc.abstractmethod
+    def init_state(self):
+        """Initial inner state for the decoder.
+
+        Returns:
+          a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
+          shape [batch_size, ...] representing the initial inner state of the decoder.
+        """
+        pass
+
+    @abc.abstractmethod
+    def zero_output(self):
+        """After-termination output.
+
+        Returns:
+          a `Tensor` of shape `[batch_size, output_size]` representing the output
+          of the decoder after the termination of actual length.
+        """"
+        pass
+
+    @abc.abstractmethod
+    def step(self, time, inputs, state):
+        """Decoder step.
+
+        Arguments:
+          time: a `0D` (i.e. scalar) `Tensor` of `dtype=tf.int32` representing
+            the 0-based value of the current step in the loop.
+          inputs: a `2D` `Tensor` of shape [batch_size, input_size] representing
+            the decoder input for the current step in the loop.
+          state: a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
+            shape [batch_size, ...] representing the inner state of the decoder for
+            the current loop step.
+
+        Returns:
+          a 4-tuple of tensor made of:
+            emit_out: a `Tensor` of shape `[batch_size, output_size]` representing the output
+              of the decoder for the current step in the loop.
+            next_input: a `Tensor` of shape `[batch_size, input_size]` representing the
+              input for the decoder at the next step in the loop.
+            next_state: a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
+              shape [batch_size, ...] representing the inner state of the decoder for the
+              next step in the loop.
+            finished: a `Tensor` of shape `[batch_size]` and `dtype=tf.bool` representing
+              which sequence in the batch has already reached the termination (according
+              to some custom internal logic).
+        """
+        pass
+
+
 class TerminationHelper(object):
     """Helps the termination for a loop over a batch of sequences.
 
@@ -520,4 +587,3 @@ class TerminationHelper(object):
             eos = tf.equal(ids, self._EOS)
             finished = tf.logical_or(finished, eos)
         return finished
-    
