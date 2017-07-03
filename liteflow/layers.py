@@ -1,4 +1,8 @@
 """Base contract for lite layers implementation."""
+# TODO(petrux): consider about getting rid of the Layer super class.
+#   Such class is extremely useful when dealing with unpacked/unstacked
+#   tensors, but since the tensor array and symbolic looping ops are now
+#   alive an' kickin' in TF, there is no need anymore of such stuff.
 
 import abc
 import functools
@@ -458,216 +462,62 @@ class PointingSoftmaxOutput(Layer):
             decoder_out, location_softmax, attention_context)
 
 
-class PointingDecoder(Layer):
-    """PointingDecoder layer.
+class TerminationHelper(object):
+    """Helps the termination for a loop over a batch of sequences.
 
-    Decode a 3D tensor os shape [batch_size, length, shortlist_size + timesteps].
-    Each outout vector will represent a probability distribution over a set of
-    symbols representing a shortlist of symbols and a list of positions over
-    the a set of attention states.
-
-    Returns:
-      a 3D tensor of shape [batch_size, length, shortlist_size + timesteps]
-      representing the decoder output.
-
-    This class implements a decoder that, in a sequence-to-sequence scenario
-    has the capability of gnerating symbols from a shortlist (i.e. an output
-    vocabulary) or pointing a position within a sequence of elements so that
-    the propert symbol can be copied from the input.
-    """
-
-    def __init__(self, decoder_cell,
-                 location_softmax, pointing_softmax_output,
-                 out_sequence_length,
-                 emit_out_feedback_fit=None,
-                 parallel_iterations=None, swap_memory=False,
-                 trainable=True, scope='PointingDecoder'):
-        """Initialize a new instance.
-
-        Arguments:
-          decoder_cell: a cell used as a decoder, implementing `tf.contrib.rnn.RNNCell`.
-          location_softmax: a LocationSoftmax instance.
-          pointing_softmax_output: a PointingSoftmaxOutput instance
-          out_sequence_length: a 1D tensor of shape [batch_size] with the actual length
-            of each output (i.e. decoded) sequence in the batch.
-          emit_out_feedback_fit: since the output can have different dimension for
-            each batch, this function should process the output and fit it to a fixed
-            length so that it can be fed back to the decoder cell, concatenated with the
-            previous output and the attention context. If None, the output is fed
-            as-is but this scenario will surely work with fixed length input states.
-            **NOTA BENE**: `the emit_out_feedback_fit` function must return a tensor with the
-            last dimension statically defined. This function will be invoked once during
-            the initialization of the instance on the output initialization tensor.
-          parallel_iterations: (Default: 32). The number of iterations to run in parallel.
-            Those operations which do not have any temporal dependency and can be run in
-            parallel, will be. This parameter trades off time for space. Values >> 1 use more
-            memory but take less time, while smaller values use less memory but computations
-            take longer.
-          swap_memory: Transparently swap the tensors produced in forward inference but needed
-            for back prop from GPU to CPU. This allows training RNNs which would typically not
-            fit on a single GPU, with very minimal (or no) performance penalty.
-          trainable: if `True`, the created variables will be trainable.
-          scope: VariableScope for the created subgraph.
-
-
-        """
-
-        super(PointingDecoder, self).__init__(trainable=trainable, scope=scope)
-        self._decoder_cell = decoder_cell
-        self._location_softmax = location_softmax
-        self._pointing_softmax_output = pointing_softmax_output
-        self._sequence_length = out_sequence_length
-        self._emit_out_feedback_fit = emit_out_feedback_fit
-        if self._emit_out_feedback_fit is None:
-            self._emit_out_feedback_fit = lambda tensor: tensor
-        self._parallel_iterations = parallel_iterations
-        self._swap_memory = swap_memory
-        self._batch_size = None
-        self._location_size = None
-
-        states = self._location_softmax.attention.states
-        self._batch_size = utils.get_dimension(states, 0)
-        self._location_size = utils.get_dimension(states, 1)
-        self._emit_out_init = self._pointing_softmax_output.zero_output(
-            self._batch_size, self._location_size)
-        cell_out_shape = tf.stack([self._batch_size, self._decoder_cell.output_size])
-        self._cell_out_init = tf.zeros(cell_out_shape)
-        self._cell_state_init = self._decoder_cell.zero_state(self._batch_size, dtype=tf.float32)
-        self._location_init = self._location_softmax.zero_location_softmax(self._batch_size)
-        self._attention_init = self._location_softmax.zero_attention_context(self._batch_size)
-        self._feedback_init = self._emit_out_feedback_fit(self._emit_out_init)
-        self._feedback_size = self._feedback_init.shape[-1].value
-        if self._feedback_size is None:
-            raise ValueError('The result of the feedback fit function must have defined size.')
-
-    @property
-    def emit_out_init(self):
-        """Initialization for the output signal."""
-        return self._emit_out_init
-
-    @property
-    def cell_out_init(self):
-        """Initialization for the decoder cell output signal."""
-        return self._cell_out_init
-
-    @property
-    def cell_state_init(self):
-        """Initialization for the cell state signal."""
-        return self._cell_state_init
-
-    def _step(self, prev_cell_out, prev_cell_state, feedback, location, attention):
-        cell_input = tf.concat([prev_cell_out, attention, feedback], axis=1)
-        cell_out, cell_state = self._decoder_cell(cell_input, prev_cell_state)
-        emit_out = self._pointing_softmax_output(cell_out, location, attention)
-        return cell_out, cell_state, emit_out
-
-    def _body(self, time, prev_cell_out, prev_cell_state,
-              prev_feedback, location, attention, emit_ta):
-        cell_out, cell_state, emit_out = self._step(
-            prev_cell_out, prev_cell_state, prev_feedback, location, attention)
-        emit_ta = emit_ta.write(time, emit_out)
-        feedback = self._emit_out_feedback_fit(emit_out)
-        query = tf.concat([cell_out, feedback], axis=-1)
-        location, attention = self._location_softmax(query)
-        time = time + 1
-        return (time, cell_out, cell_state, feedback, location, attention, emit_ta)
-
-    # pylint: disable=I0011,W0221,W0235
-    def _call_helper(self):
-        time = tf.constant(0, dtype=tf.int32)
-        prev_cell_out = self._cell_out_init
-        prev_cell_state = self._cell_state_init
-        feedback = self._feedback_init
-        location = self._location_init
-        attention = self._attention_init
-        emit_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-        results = tf.while_loop(
-            cond=lambda t, *_: tf.reduce_any(tf.less(t, self._sequence_length)),
-            body=self._body,
-            loop_vars=[time, prev_cell_out, prev_cell_state,
-                       feedback, location, attention, emit_ta])
-        emit_ta_final = results[-1]
-        output = emit_ta_final.stack()
-        output = tf.transpose(output, [1, 0, 2])
-        mask = tf.sequence_mask(self._sequence_length, dtype=tf.float32)
-        mask = tf.expand_dims(mask, axis=2)
-        return output * mask
-
-    # pylint: disable=I0011,W0221,W0235
-    def __call__(self):
-        return super(PointingDecoder, self).__call__()
-
-
-def pointing_decoder(attention_states,
-                     attention_inner_size,
-                     decoder_cell,
-                     shortlist_size,
-                     attention_sequence_length=None,
-                     output_sequence_length=None,
-                     emit_out_feedback_size=None,
-                     parallel_iterations=None,
-                     swap_memory=False,
-                     trainable=True):
-    """Creates a PointingDecoder layer.
+    Given the current time of the loop and the current output, returns a
+    tensor of boolean flags indicating for which sequence in the batch, the
+    end has been reached.
 
     Arguments:
-      attention_states: a 3D Tensor of shape [batch_size, timesteps, state_size]
-        representing the states on which the attention scores will be computed;
-        the third dimension of the tensor must be statically determined.
-      inner_size: `int` representing the inner attention size of a BahdanauAttention.
-      decoder_cell: a cell used as a decoder, implementing `tf.contrib.rnn.RNNCell`.
-      shortlist_size:
-      attention_sequence_length: a 1D Tensor of shape [batch_size] where each element
-        represent the number of actual meaningful elements in each sequence of the
-        attention states.
-      output_sequence_length: a 1D Tensor of shape [batch_size] where each element
-        represent the number of actual meaningful elements in each sequence of the
-        output tensor.
-      emit_out_feedback_fit: since the output can have different dimension for
-        each batch, this function should process the output and fit it to a fixed
-        length so that it can be fed back to the decoder cell, concatenated with the
-        previous output and the attention context. If None, the output is fed
-        as-is but this scenario will surely work with fixed length input states.
-      parallel_iterations: (Default: 32). The number of iterations to run in parallel.
-        Those operations which do not have any temporal dependency and can be run in
-        parallel, will be. This parameter trades off time for space. Values >> 1 use more
-        memory but take less time, while smaller values use less memory but computations
-        take longer.
-      swap_memory: Transparently swap the tensors produced in forward inference but needed
-        for back prop from GPU to CPU. This allows training RNNs which would typically not
-        fit on a single GPU, with very minimal (or no) performance penalty.
-        trainable: if `True`, the created variables will be trainable.
-      trainable: if True, variables will be trainable;
+      lengths: a `Tensor` of rank `0D` or `1D`, with shape [batch_size]. Is the hard
+        limit of the number of iteration for each sequence in the batch. If a `0D` tensor
+        is passed, this limit will be applied to all the sequences.
+      EOS: an (optional) `int` representing the index value for the `end-of-sequence`
+        symbol. The class field `EOS` can be used as the default index for the
+        `end-of-sequence`, so that a certain sequence is considered as terminated if
+        the current emission is equal to such symbol.
 
-    Returns:
-      a new instance of the PointingDecoder layer.
+    The i-th sequence in the batch is considered as terminated if the current step
+    is greater or equal the number of steps allowed (defined in the `lengths` input
+    argument) and if the `argmax` over the output probability distribution ends up
+    in the class that has id equal to the `EOS` symbol (if provided).
     """
 
-    attention = BahdanauAttention(
-        states=attention_states,
-        inner_size=attention_inner_size,
-        trainable=trainable)
+    EOS = 0
 
-    location = LocationSoftmax(
-        attention=attention,
-        sequence_length=attention_sequence_length)
+    def __init__(self, lengths, EOS=None):
+        """Initialise a new TerminationHelper instance."""
+        self._EOS = EOS  # pylint: disable=I0011,C0103
+        if lengths is None:
+            raise ValueError("`lengths` must be a 0D or 1D Tensor, not `None`")
+        self._lengths = lengths
 
-    state_size = attention_states.shape[-1].value
-    output = PointingSoftmaxOutput(
-        shortlist_size=shortlist_size,
-        decoder_out_size=decoder_cell.output_size,
-        state_size=state_size,
-        trainable=trainable)
-
-    fit = None
-    if emit_out_feedback_size is not None:
-        fit = functools.partial(ops.fit, width=emit_out_feedback_size)
-    decoder = PointingDecoder(
-        decoder_cell=decoder_cell,
-        location_softmax=location,
-        out_sequence_length=output_sequence_length,
-        pointing_softmax_output=output,
-        emit_out_feedback_fit=fit,
-        parallel_iterations=parallel_iterations,
-        swap_memory=swap_memory)
-    return decoder
+    def finished(self, time, output):
+        """Check which sentences are finished.
+        
+        Arguments:
+          time: a `Tensor` of rank `0D` (i.e. a scalar) with the 0-based value of the
+            current step in the loop.
+          output: a `Tensor` of rank `2D` and shape `[batch_size, num_classes]` representing
+            the current output of the model, i.e. abatch of probability distribution estimations
+            over the output classes.
+        
+        Returns:
+          a `Tensor` of shape `[batch_size]` of `tf.bool` elements, indicating for each
+          position if the corresponding sequence has terminated or not. A sequence is
+          has terminated if the current step is greater or equal the number of steps allowed
+          (defined in the `lengths` input argument) and if the `argmax` over the output
+          probability distribution ends up in the class that has id equal to the `EOS` symbol
+          (if provided).
+        """
+        finished = tf.greater_equal(time, self._lengths)
+        if finished.get_shape().ndims == 0:
+            batch = [utils.get_dimension(output, 0)]
+            finished = tf.tile([finished], batch)
+        if self._EOS is not None:
+            ids = tf.cast(tf.argmax(output, axis=-1), tf.int32)
+            eos = tf.equal(ids, self._EOS)
+            finished = tf.logical_or(finished, eos)
+        return finished
+    
