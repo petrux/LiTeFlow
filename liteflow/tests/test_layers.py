@@ -224,14 +224,13 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         self.assertAllEqual(exp_zero_output, act_zero_output)
 
 
-
 class TestTerminationHelper(tf.test.TestCase):
     """Test case for the TerminationHelper class."""
 
     def test_init_errors(self):
         """Test initialization errors."""
-        lengths0D = tf.placeholder(dtype=tf.int32, shape=[])
-        lengths1D = tf.placeholder(dtype=tf.int32, shape=[None])
+        lengths0D = tf.placeholder(dtype=tf.int32, shape=[])  # pylint: disable=C0103,I0011
+        lengths1D = tf.placeholder(dtype=tf.int32, shape=[None])  # pylint: disable=C0103,I0011
         self.assertRaises(ValueError, layers.TerminationHelper, None)
         self.assertRaises(ValueError, layers.TerminationHelper, None, 23)
         layers.TerminationHelper(lengths0D, None)
@@ -265,6 +264,117 @@ class TestTerminationHelper(tf.test.TestCase):
 
         exp_finished = [True, True, False, False]
         self.assertAllEqual(exp_finished, act_finished)
+
+
+class TestDynamicDecoder(tf.test.TestCase):
+    """Test case for the DynamicDecoder class."""
+
+    def test_output(self):
+        """Test the DynamicDecoder.output() method."""
+        
+        helper = mock.Mock()
+        decoder = mock.Mock()
+        zero_output = tf.constant([[0, 0, 0], [0, 0, 0]], dtype=tf.float32)
+        decoder.zero_output.side_effect = [zero_output]
+
+        output = tf.constant([[23, 23, 23], [23, 23, 23]], dtype=tf.float32)
+        finished = tf.constant([True, False], dtype=tf.bool)
+
+        dyndec = layers.DynamicDecoder(decoder, helper)
+        act_output_t = dyndec.output(output, finished)
+        exp_output = np.asarray([[0, 0, 0], [23, 23, 23]], dtype=np.float32) # pylint: disable=I0011,E1101
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            act_output = sess.run(act_output_t)
+
+        helper.finished.assert_not_called()
+        decoder.zero_output.assert_called_once()
+        self.assertAllEqual(exp_output, act_output)
+
+    def test_condition(self):
+        """Test the DynamicDecoder.condition() method."""
+
+        helper = mock.Mock()
+        decoder = mock.Mock()
+
+        dyndec = layers.DynamicDecoder(decoder, helper)
+        finished = [(tf.constant([True], dtype=tf.bool), False),
+                    (tf.constant([False], dtype=tf.bool), True),
+                    (tf.constant([True, False], dtype=tf.bool), True),
+                    (tf.constant([True, True], dtype=tf.bool), False)]
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            for tensor, expected in finished:
+                actual = sess.run(dyndec.cond(None, None, None, tensor, None))
+                self.assertEqual(expected, actual)
+
+        helper.assert_not_called()
+        decoder.assert_not_called()
+
+    def test_body(self):
+        """Test the DynamicDecoder.body() method."""
+        time = tf.constant(2, dtype=tf.int32)
+        inp = tf.constant([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]])
+        state = tf.constant([[5.0, 5.0, 5.0], [6.0, 6.0, 6.0], [7.0, 7.0, 7.0], [8.0, 8.0, 8.0]])
+        finished = tf.constant([False, False, False, False], dtype=tf.bool)
+        output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+
+        # Fill the output tensor array with some dummy
+        # values for items 0 and 1
+        dummy_out = tf.constant([[-.1, -.1], [-.2, -.2], [-.3, -.3], [-.4, -.4]])
+        output_ta = output_ta.write(0, dummy_out).write(1, dummy_out)
+
+        dec_out = tf.constant([[10.0, 10.0], [20.0, 20.0], [30.0, 30.0], [17.0, 17.0]])
+        next_inp = 7.0 * inp
+        next_state = 11.0 * state
+        next_finished = tf.constant([False, False, False, True], dtype=tf.bool)
+        zero_output = tf.zeros(dtype=tf.float32, shape=dec_out.get_shape())
+
+        decoder = mock.Mock()
+        decoder.step.side_effect = [(dec_out, next_inp, next_state, next_finished)]
+        decoder.zero_output.side_effect = [zero_output]
+
+        helper_finished = tf.constant([True, False, False, False], dtype=tf.bool)
+        helper = mock.Mock()
+        helper.finished.side_effect = [helper_finished]
+
+        # pylint: disable=I0011,E1101
+        output_exp = np.asarray([[0.0, 0.0], [20.0, 20.0], [30.0, 30.0], [0.0, 0.0]])
+        next_finished_exp = np.asarray([True, False, False, True], np.bool)
+        # pylint: enable=I0011,E1101
+
+        dyndec = layers.DynamicDecoder(decoder, helper)
+        next_time_t, next_inp_t, next_state_t, next_finished_t, next_output_ta =\
+            dyndec.body(time, inp, state, finished, output_ta)
+        outputs_t = next_output_ta.stack()  # still time major, easier to check.
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            next_inp_exp, next_state_exp, dummy_out_act =\
+                sess.run([next_inp, next_state, dummy_out])
+            next_time_act, next_inp_act, next_state_act, next_finished_act, outputs_act =\
+                sess.run([next_time_t, next_inp_t, next_state_t, next_finished_t, outputs_t])
+
+        # assertions on tensors.
+        self.assertEqual(next_inp, next_inp_t)
+        self.assertEqual(next_state, next_state_t)
+
+        # assertion on mocks.
+        decoder.step.assert_called_once_with(time, inp, state)
+        decoder.zero_output.assert_called_once()
+        helper.finished.assert_called_once_with(time, dec_out)
+
+        # assertion on calculated values.
+        self.assertEqual(3, next_time_act)
+        self.assertAllEqual(next_inp_exp, next_inp_act)
+        self.assertAllEqual(next_state_exp, next_state_act)
+        self.assertAllEqual(next_finished_exp, next_finished_act)
+        self.assertAllEqual(dummy_out_act, outputs_act[0])
+        self.assertAllEqual(dummy_out_act, outputs_act[1])
+        self.assertAllEqual(output_exp, outputs_act[-1])
+        
 
 if __name__ == '__main__':
     tf.test.main()

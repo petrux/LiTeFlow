@@ -470,6 +470,11 @@ class DecoderBase(object):
         self._trainable = trainable
         self._name = name or self.__class__.__name__
 
+    @property
+    def trainable(self):
+        """True if the decoder is trainable."""
+        return self._trainable
+
     @abc.abstractmethod
     def init_input(self):
         """Initial input state for the decoder.
@@ -497,17 +502,17 @@ class DecoderBase(object):
         Returns:
           a `Tensor` of shape `[batch_size, output_size]` representing the output
           of the decoder after the termination of actual length.
-        """"
+        """
         pass
 
     @abc.abstractmethod
-    def step(self, time, inputs, state):
+    def step(self, time, input, state):
         """Decoder step.
 
         Arguments:
           time: a `0D` (i.e. scalar) `Tensor` of `dtype=tf.int32` representing
             the 0-based value of the current step in the loop.
-          inputs: a `2D` `Tensor` of shape [batch_size, input_size] representing
+          input: a `2D` `Tensor` of shape [batch_size, input_size] representing
             the decoder input for the current step in the loop.
           state: a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
             shape [batch_size, ...] representing the inner state of the decoder for
@@ -515,7 +520,7 @@ class DecoderBase(object):
 
         Returns:
           a 4-tuple of tensor made of:
-            emit_out: a `Tensor` of shape `[batch_size, output_size]` representing the output
+            output: a `Tensor` of shape `[batch_size, output_size]` representing the output
               of the decoder for the current step in the loop.
             next_input: a `Tensor` of shape `[batch_size, input_size]` representing the
               input for the decoder at the next step in the loop.
@@ -562,14 +567,14 @@ class TerminationHelper(object):
 
     def finished(self, time, output):
         """Check which sentences are finished.
-        
+
         Arguments:
           time: a `Tensor` of rank `0D` (i.e. a scalar) with the 0-based value of the
             current step in the loop.
           output: a `Tensor` of rank `2D` and shape `[batch_size, num_classes]` representing
             the current output of the model, i.e. abatch of probability distribution estimations
             over the output classes.
-        
+
         Returns:
           a `Tensor` of shape `[batch_size]` of `tf.bool` elements, indicating for each
           position if the corresponding sequence has terminated or not. A sequence is
@@ -587,3 +592,52 @@ class TerminationHelper(object):
             eos = tf.equal(ids, self._EOS)
             finished = tf.logical_or(finished, eos)
         return finished
+
+
+class DynamicDecoder(Layer):
+    """Dynamic decoder implementation."""
+
+    def __init__(self, decoder, helper, name='DynamicDecoder', **kwargs):
+        self._decoder = decoder
+        self._helper = helper
+        super(DynamicDecoder, self).__init__(
+            trainable=decoder.trainable, name=name, **kwargs)
+
+    def output(self, output, finished):
+        """Filter the output tensor w.r.t. which sequence in the batch is finished."""
+        zoutput = self._decoder.zero_output()
+        return tf.where(finished, zoutput, output)
+
+    # TODO(petrux): massive renaming.
+    def body(self, time, inp, state, finished, output_ta):
+        """Body of the dynamic decoding phase."""
+        output, ninput, nstate, nfinished = self._decoder.step(time, inp, state)
+        tfinished = self._helper.finished(time, output)
+        nfinished = tf.logical_or(nfinished, tfinished)
+        output = self.output(output, nfinished)
+        output_ta = output_ta.write(time, output)
+        ntime = tf.add(time, 1)
+        return ntime, ninput, nstate, nfinished, output_ta
+
+    # pylint: disable=W0613,I0011
+    def cond(self, time, inp, state, finished, output_ta):
+        """Logical contidion for termination."""
+        return tf.logical_not(tf.reduce_all(finished))
+
+    # pylint: disable=W0221,I0011
+    def _call_helper(self):
+        time = tf.constant(0, dtype=tf.int32)
+        inp = self._decoder.init_input()
+        state = self._decoder.init_state()
+        output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+        loop_vars = [time, inp, state, output_ta]
+        results = tf.while_loop(cond=self.cond, body=self.body, loop_vars=loop_vars)
+        output_ta = results[-1]
+        output = output_ta.stack()
+        output = tf.transpose(output, [1, 0, 2])
+        state = results[-2]
+        return output, state
+
+    def decode(self):
+        """Run the dynamic decoding."""
+        return self.__call__()
