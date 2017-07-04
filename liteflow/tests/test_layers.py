@@ -8,7 +8,7 @@ import mock
 import numpy as np
 import tensorflow as tf
 
-from liteflow import layers, utils
+from liteflow import layers
 
 
 class BahdanauAttentionTest(tf.test.TestCase):
@@ -318,7 +318,7 @@ class TestDynamicDecoder(tf.test.TestCase):
         time = tf.constant(2, dtype=tf.int32)
         inp = tf.constant([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]])
         state = tf.constant([[5.0, 5.0, 5.0], [6.0, 6.0, 6.0], [7.0, 7.0, 7.0], [8.0, 8.0, 8.0]])
-        finished = tf.constant([False, False, False, False], dtype=tf.bool)
+        finished = tf.constant([False, False, False, True], dtype=tf.bool)
         output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
 
         # Fill the output tensor array with some dummy
@@ -329,7 +329,7 @@ class TestDynamicDecoder(tf.test.TestCase):
         dec_out = tf.constant([[10.0, 10.0], [20.0, 20.0], [30.0, 30.0], [17.0, 17.0]])
         next_inp = 7.0 * inp
         next_state = 11.0 * state
-        next_finished = tf.constant([False, False, False, True], dtype=tf.bool)
+        next_finished = tf.constant([False, False, True, True], dtype=tf.bool)
         zero_output = tf.zeros(dtype=tf.float32, shape=dec_out.get_shape())
 
         decoder = mock.Mock()
@@ -341,8 +341,9 @@ class TestDynamicDecoder(tf.test.TestCase):
         helper.finished.side_effect = [helper_finished]
 
         # pylint: disable=I0011,E1101
-        output_exp = np.asarray([[0.0, 0.0], [20.0, 20.0], [30.0, 30.0], [0.0, 0.0]])
-        next_finished_exp = np.asarray([True, False, False, True], np.bool)
+        # NOTA BENE: the only masked element is the one that is masked in the beginning.
+        output_exp = np.asarray([[10.0, 10.0], [20.0, 20.0], [30.0, 30.0], [0.0, 0.0]])
+        next_finished_exp = np.asarray([True, False, True, True], np.bool)
         # pylint: enable=I0011,E1101
 
         dyndec = layers.DynamicDecoder(decoder, helper)
@@ -374,7 +375,50 @@ class TestDynamicDecoder(tf.test.TestCase):
         self.assertAllEqual(dummy_out_act, outputs_act[0])
         self.assertAllEqual(dummy_out_act, outputs_act[1])
         self.assertAllEqual(output_exp, outputs_act[-1])
+
+    def test_decode_one_step(self):
+        """Default test for the DynamicDecoder.decode() method."""
+
+        init_value = [[.1, .1], [.2, .2], [.3, .3]]
+        init_input = tf.constant(init_value)
+        init_state = 2 * init_input
+        next_input = 3 * init_input
+        next_state = 4 * init_input
+        output = 10 * init_input
+        finished = tf.constant([False, False, False], dtype=tf.bool)
+        zero_output = tf.zeros_like(output)
+
+        decoder = mock.Mock()
+        decoder.init_input.side_effect = [init_input]
+        decoder.init_state.side_effect = [init_state]
+        decoder.zero_output.side_effect = [zero_output]
+        decoder.step.side_effect = [(output, next_input, next_state, finished)]
         
+        helper = mock.Mock()
+        helper.finished.side_effect = [tf.logical_not(finished)]  # exit from the loop!
+        
+        dyndec = layers.DynamicDecoder(decoder, helper)
+        output_t, state_t = dyndec.decode()
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            output_act, state_act = sess.run([output_t, state_t])
+
+            # assertions on output.
+            output_exp = 10 * np.transpose(np.asarray([init_value]), (1, 0, 2))
+            self.assertAllClose(output_exp, output_act)
+            state_exp = 4 * np.asarray(init_value)
+            self.assertAllClose(state_exp, state_act)
+
+            # mock assertions.
+            # we cannot assert more than this since the while
+            # loop makes all the ops non-fetchable.
+            decoder.init_input.assert_called_once()
+            decoder.init_state.assert_called_once()
+            decoder.zero_output.assert_called_once()
+            decoder.step.assert_called_once()
+            helper.finished.assert_called_once()
+
 
 if __name__ == '__main__':
     tf.test.main()

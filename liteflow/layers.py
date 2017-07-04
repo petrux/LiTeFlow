@@ -611,13 +611,14 @@ class DynamicDecoder(Layer):
     # TODO(petrux): massive renaming.
     def body(self, time, inp, state, finished, output_ta):
         """Body of the dynamic decoding phase."""
-        output, ninput, nstate, nfinished = self._decoder.step(time, inp, state)
-        tfinished = self._helper.finished(time, output)
-        nfinished = tf.logical_or(nfinished, tfinished)
-        output = self.output(output, nfinished)
+        output, ninput, nstate, decoder_finished = self._decoder.step(time, inp, state)
+        next_finished = tf.logical_or(finished, decoder_finished)
+        helper_finished = self._helper.finished(time, output)
+        next_finished = tf.logical_or(next_finished, helper_finished)
+        output = self.output(output, finished)  # NOTA: output is filtered on current finished!
         output_ta = output_ta.write(time, output)
         ntime = tf.add(time, 1)
-        return ntime, ninput, nstate, nfinished, output_ta
+        return ntime, ninput, nstate, next_finished, output_ta
 
     # pylint: disable=W0613,I0011
     def cond(self, time, inp, state, finished, output_ta):
@@ -629,13 +630,14 @@ class DynamicDecoder(Layer):
         time = tf.constant(0, dtype=tf.int32)
         inp = self._decoder.init_input()
         state = self._decoder.init_state()
+        finished = tf.tile([False], [utils.get_dimension(inp, 0)])
         output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-        loop_vars = [time, inp, state, output_ta]
+        loop_vars = [time, inp, state, finished, output_ta]
         results = tf.while_loop(cond=self.cond, body=self.body, loop_vars=loop_vars)
         output_ta = results[-1]
         output = output_ta.stack()
         output = tf.transpose(output, [1, 0, 2])
-        state = results[-2]
+        state = results[2]
         return output, state
 
     def decode(self):
