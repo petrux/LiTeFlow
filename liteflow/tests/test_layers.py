@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 from liteflow import layers
-
+from liteflow import utils
 
 class BahdanauAttentionTest(tf.test.TestCase):
     """Test case for the liteflow.layers.BahdanauAttention class."""
@@ -262,7 +262,14 @@ class TestTerminationHelper(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             act_finished = sess.run(finished)
 
-        exp_finished = [True, True, False, False]
+        # NOTA BENE: we have set that
+        # time = 5
+        # lengths = [4, 5, 6, 7]
+        # 
+        # Since the time is 0-based, having time=5 means that
+        # we have alread scanned through 5 elements, so only
+        # the last sequence in the batch is ongoing.
+        exp_finished = [True, True, True, False]
         self.assertAllEqual(exp_finished, act_finished)
 
 
@@ -271,7 +278,7 @@ class TestDynamicDecoder(tf.test.TestCase):
 
     def test_output(self):
         """Test the DynamicDecoder.output() method."""
-        
+
         helper = mock.Mock()
         decoder = mock.Mock()
         zero_output = tf.constant([[0, 0, 0], [0, 0, 0]], dtype=tf.float32)
@@ -393,10 +400,10 @@ class TestDynamicDecoder(tf.test.TestCase):
         decoder.init_state.side_effect = [init_state]
         decoder.zero_output.side_effect = [zero_output]
         decoder.step.side_effect = [(output, next_input, next_state, finished)]
-        
+
         helper = mock.Mock()
         helper.finished.side_effect = [tf.logical_not(finished)]  # exit from the loop!
-        
+
         dyndec = layers.DynamicDecoder(decoder, helper)
         output_t, state_t = dyndec.decode()
 
@@ -419,6 +426,152 @@ class TestDynamicDecoder(tf.test.TestCase):
             decoder.step.assert_called_once()
             helper.finished.assert_called_once()
 
+    def test_iterations_step_by_step(self):
+        """Test the number of iterations (step by step)."""
+
+        # pylint: disable=C0103,I0011
+        T, F = True, False
+        bt = lambda *args: tf.convert_to_tensor(list(args), dtype=tf.bool)
+        # pylint: enable=C0103,I0011
+
+        init_value = [[.1, .1], [.2, .2], [.3, .3]]
+        inp = tf.placeholder(tf.float32, shape=[None, None])
+        state = 2 * inp
+        # next_input = 3 * init_input
+        # next_state = 4 * init_input
+        zero_output = tf.zeros_like(inp)
+
+        out01 = 10 * inp
+        out02 = 20 * inp
+        out03 = 30 * inp
+
+        decoder = mock.Mock()
+        decoder.init_input.side_effect = [inp]
+        decoder.init_state.side_effect = [state]
+        decoder.zero_output.return_value = zero_output
+        decoder_finished_00 = bt(F, F, F)
+        decoder_finished_01 = bt(F, F, T)
+        decoder_finished_02 = bt(F, F, T)
+        decoder.step.side_effect = [
+            (out01, inp, state, decoder_finished_00),  # time=0
+            (out02, inp, state, decoder_finished_01),  # time=1
+            (out03, inp, state, decoder_finished_02)]  # time=2
+
+        helper = mock.Mock()
+        helper_finished_00 = bt(F, F, F)
+        helper_finished_01 = bt(F, T, F)
+        helper_finished_02 = bt(T, F, F)
+        helper.finished.side_effect = [
+            helper_finished_00,  # time=0
+            helper_finished_01,  # time=1
+            helper_finished_02]  # time=2
+
+        # STEP BY STEP EVALUATION OF `finished` flags.
+        from liteflow import utils
+        dyndec = layers.DynamicDecoder(decoder, helper)
+
+        time = tf.constant(0, dtype=tf.int32)
+        finished = tf.tile([F], [utils.get_dimension(inp, 0)])
+        output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+
+        # time=0
+        next_finished_00_exp = [F, F, F]
+        results_00 = dyndec.body(time, inp, state, finished, output_ta)
+        time = results_00[0]
+        finished = results_00[3]
+        results_00[-1].stack()
+        
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            next_finished_00_act = sess.run(finished, feed)
+            self.assertEqual(1, sess.run(time, feed))
+            self.assertAllEqual(next_finished_00_exp, next_finished_00_act)
+
+        # time=1
+        cond_01_t = dyndec.cond(*results_00)
+        cond_01_exp = True
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            cond_01_act = sess.run(cond_01_t, feed)
+            self.assertEqual(cond_01_exp, cond_01_act)
+
+        next_finished_01_exp = [F, T, T]
+        results_01 = dyndec.body(time, inp, state, finished, output_ta)
+        time = results_01[0]
+        finished = results_01[3]
+        results_01[-1].stack()
+
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            self.assertEqual(2, sess.run(time, feed))
+            next_finished_01_act = sess.run(finished, feed)
+            self.assertAllEqual(next_finished_01_exp, next_finished_01_act)
+
+        # time=2
+        cond_02_t = dyndec.cond(*results_01)
+        cond_02_exp = True
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            cond_02_act = sess.run(cond_02_t, feed)
+            self.assertEqual(cond_02_exp, cond_02_act)
+
+        next_finished_02_exp = [T, T, T]
+        results_02 = dyndec.body(time, inp, state, finished, output_ta)
+        time = results_02[0]
+        finished = results_02[3]
+        results_02[-1].stack()
+
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            self.assertEqual(3, sess.run(time, feed))
+            next_finished_02_act = sess.run(finished, feed)
+            self.assertAllEqual(next_finished_02_exp, next_finished_02_act)
+
+        # time=3
+        cond_03_t = dyndec.cond(*results_02)
+        cond_03_exp = False  # STOP!
+        feed = {inp: init_value}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            cond_03_act = sess.run(cond_03_t, feed)
+            self.assertEqual(cond_03_exp, cond_03_act)
+
+    def test_iterations(self):
+        """Test the number of iterations."""
+
+        lengths = tf.constant([1, 2, 3], dtype=tf.int32)
+        def _helper_finished(time, _):
+            return tf.greater_equal(time + 1, lengths)
+        helper = mock.Mock()
+        helper.finished.side_effect = _helper_finished
+
+        batch_size = utils.get_dimension(lengths, 0)
+        inp_size, state_size, output_size = 2, 5, 2
+
+        decoder = mock.Mock()
+        decoder.init_input.side_effect = lambda: tf.zeros([batch_size, inp_size])
+        decoder.init_state.side_effect = lambda: tf.zeros([batch_size, state_size])
+        decoder.zero_output.side_effect = lambda: tf.zeros([batch_size, output_size])
+        decoder.step.side_effect = lambda t, i, s: ((i + 1), 3 * (i + 1), s, tf.tile([False], [batch_size]))
+
+        output_exp = np.asarray(
+            [[[1, 1], [0, 0], [0, 0]],
+             [[1, 1], [4, 4], [0, 0]],
+             [[1, 1], [4, 4], [13, 13]]],
+            dtype=np.float32)  # pylint: disable=E1101,I0011
+        
+        dyndec = layers.DynamicDecoder(decoder, helper)
+        output_t, state_t = dyndec.decode()
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            output_act, state_act = sess.run([output_t, state_t])
+            self.assertAllEqual(output_exp, output_act)
 
 if __name__ == '__main__':
     tf.test.main()

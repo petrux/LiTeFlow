@@ -506,13 +506,13 @@ class DecoderBase(object):
         pass
 
     @abc.abstractmethod
-    def step(self, time, input, state):
+    def step(self, time, inp, state):
         """Decoder step.
 
         Arguments:
           time: a `0D` (i.e. scalar) `Tensor` of `dtype=tf.int32` representing
             the 0-based value of the current step in the loop.
-          input: a `2D` `Tensor` of shape [batch_size, input_size] representing
+          inp: a `2D` `Tensor` of shape [batch_size, input_size] representing
             the decoder input for the current step in the loop.
           state: a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
             shape [batch_size, ...] representing the inner state of the decoder for
@@ -522,7 +522,7 @@ class DecoderBase(object):
           a 4-tuple of tensor made of:
             output: a `Tensor` of shape `[batch_size, output_size]` representing the output
               of the decoder for the current step in the loop.
-            next_input: a `Tensor` of shape `[batch_size, input_size]` representing the
+            next_inp: a `Tensor` of shape `[batch_size, input_size]` representing the
               input for the decoder at the next step in the loop.
             next_state: a `Tensor` or a tuple of `Tensor`s of arbitrary rand and `dtype` and
               shape [batch_size, ...] representing the inner state of the decoder for the
@@ -583,7 +583,8 @@ class TerminationHelper(object):
           probability distribution ends up in the class that has id equal to the `EOS` symbol
           (if provided).
         """
-        finished = tf.greater_equal(time, self._lengths)
+        length = time + 1
+        finished = tf.greater_equal(length, self._lengths)
         if finished.get_shape().ndims == 0:
             batch = [utils.get_dimension(output, 0)]
             finished = tf.tile([finished], batch)
