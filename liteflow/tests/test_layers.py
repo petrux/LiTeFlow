@@ -273,6 +273,46 @@ class TestTerminationHelper(tf.test.TestCase):
         self.assertAllEqual(exp_finished, act_finished)
 
 
+class TestPointingSoftmaxDecoder(tf.test.TestCase):
+    """Test case for the PointingSoftmaxDecoder class."""
+
+    def test_init_input(self):
+        """Test the .init_input() method."""
+
+        batch_size = 2
+        timesteps = 5
+        shortlist_size = 3
+        state_size = 9
+        #  output_size = shortlist_size + timesteps
+        input_size = 5
+
+        states = tf.placeholder(tf.float32, shape=[None, None, None])
+
+        cell = mock.Mock()
+        location_softmax = mock.Mock()
+        location_softmax.attention.states = states
+        
+        pointing_output = mock.Mock()
+        def _zero_output(batch_size, loc_size):
+            shape = tf.stack([batch_size, shortlist_size + loc_size])
+            return tf.zeros(shape, dtype=tf.float32)
+        pointing_output.zero_output.side_effect = _zero_output 
+
+        decoder = layers.PointingSoftmaxDecoder(
+            cell=cell,
+            location_softmax=location_softmax,
+            pointing_output=pointing_output,
+            input_size=input_size)
+
+        init_input_exp = np.zeros((batch_size, input_size))
+        init_input_act_t = decoder.init_input()
+
+        feed = {states: np.random.rand(batch_size, timesteps, state_size)}
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            init_input_act = sess.run(init_input_act_t, feed)
+
+
 class TestDynamicDecoder(tf.test.TestCase):
     """Test case for the DynamicDecoder class."""
 

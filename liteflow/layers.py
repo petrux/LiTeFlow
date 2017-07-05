@@ -463,6 +463,7 @@ class PointingSoftmaxOutput(Layer):
 
 
 class DecoderBase(object):
+    """Base contract for a decoder."""
 
     __metaclass__ = abc.ABCMeta
 
@@ -534,6 +535,49 @@ class DecoderBase(object):
         pass
 
 
+class PointingSoftmaxDecoder(DecoderBase):
+    """Pointing softmax decoder."""
+
+    def __init__(self, cell, location_softmax, pointing_output,
+                 input_size, decoder_inputs=None, 
+                 trainable=True, name=None, **kwargs):
+        """Initializes a new PointingSoftmaxDecoder instance."""
+        super(PointingSoftmaxDecoder, self).__init__(
+            trainable=trainable, name=name, **kwargs)
+        self._cell = cell
+        self._loc = location_softmax
+        self._out = pointing_output
+        self._inp_size = input_size
+        self._inputs = decoder_inputs
+
+        # infer the batch/location size from the `states` tensor
+        # of the attention layer of the injected location softmax.
+        states = self._loc.attention.states
+        self._batch_size = utils.get_dimension(states, 0)
+        self._loc_size = utils.get_dimension(states, 1)
+        
+
+    def init_input(self):
+        return ops.fit(
+            self._out.zero_output(
+                self._batch_size, self._loc_size),
+            self._inp_size) 
+
+    def init_state(self):
+        """A tuple of tensors.
+        
+        The state of a pointing softmax decoder is made of a 2 elements tuple
+        carring the output and the inner state of the internal recurrent cell.
+        """
+        pass
+
+    def zero_output(self):
+        pass
+
+    def step(time, inp, state):
+        pass
+
+
 class TerminationHelper(object):
     """Helps the termination for a loop over a batch of sequences.
 
@@ -598,6 +642,8 @@ class TerminationHelper(object):
 class DynamicDecoder(Layer):
     """Dynamic decoder implementation."""
 
+    # TODO(petrux): add swap_memory argument
+    # TODO(petrux): add parallel_iterations argument
     def __init__(self, decoder, helper, name='DynamicDecoder', **kwargs):
         self._decoder = decoder
         self._helper = helper
