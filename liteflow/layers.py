@@ -555,7 +555,6 @@ class PointingSoftmaxDecoder(DecoderBase):
         states = self._loc.attention.states
         self._batch_size = utils.get_dimension(states, 0)
         self._loc_size = utils.get_dimension(states, 1)
-        
 
     def init_input(self):
         return ops.fit(
@@ -567,15 +566,63 @@ class PointingSoftmaxDecoder(DecoderBase):
         """A tuple of tensors.
         
         The state of a pointing softmax decoder is made of a 2 elements tuple
-        carring the output and the inner state of the internal recurrent cell.
+        carring the output and the inner state of the internal recurrent cell
+        (which can be a structure of tensors iteself).
         """
-        pass
+        cell_output = tf.zeros(tf.stack([self._batch_size, self._cell.output_size]))
+        cell_state = self._cell.zero_state(self._batch_size)
+        return (cell_output, cell_state)
 
     def zero_output(self):
-        pass
+        return self._out.zero_output(
+            self._batch_size, self._loc_size)
 
-    def step(time, inp, state):
-        pass
+    def next_inp(self, time, output):
+        if self._inputs:
+            print(time)
+            raise NotImplementedError()
+        return ops.fit(output, self._inp_size)
+
+    def finished(self, time):
+        if self._inputs:
+            print(time)
+            raise NotImplementedError()
+        return tf.tile([False], [self._batch_size])
+
+    def step(self, time, inp, state):
+        
+        # Unpack the state into:
+        # `in_cell_out`: the cell output at the previous step,
+        # `in_cell_state`: the cell inner stata at the previous step.
+        in_cell_out, in_cell_state = state
+
+        # Use the previous cell output `in_cell_out` as a query
+        # to compute the location scores and the attention context.
+        location, attention = self._loc(in_cell_out)
+
+        # Concatenate the previous cell output, the attention context
+        # and the current input as the cell current input and feed the
+        # cell to compute the current cell output and the current cell state
+        # which will be packed in the `next_state` tuple.
+        cell_input = tf.concat([in_cell_out, attention, inp], axis=1)
+        cell_out, cell_state = self._cell(cell_input, in_cell_state)
+        next_state = (cell_out, cell_state)
+
+        # Project the cell output into the pointing softmax output layer
+        # together with the attention and the location tensor.
+        output = self._out(cell_out, location, attention)
+
+        # Get the next input: if the decoder inputs have been provided,
+        # returns the (time + 1)-th if available, otherwise, fit the
+        # current output to the input_size.
+        next_inp = self.next_inp(time, output)
+        
+        # Get the termination flag tensor for the current timestep.
+        finished = self.finished(time)
+
+        # Return the outputs.
+        return output, next_inp, next_state, finished
+        
 
 
 class TerminationHelper(object):
