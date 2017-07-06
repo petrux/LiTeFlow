@@ -550,8 +550,41 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
 
     def test_finished_with_decoder_input(self):  # pylint: disable=C0103
         """Test the .finished() method when decoder inputs are not provided."""
-        pass
-        
+
+        input_size = 4
+        decoder_inputs_value = np.asarray(
+            [[[1, 1], [2, 2], [3, 3]],
+             [[10, 10], [20, 20], [30, 30]]],
+            dtype=np.float32)
+        decoder_inputs = tf.constant(decoder_inputs_value)
+        states = tf.random_normal([2, 10, 7])  # nota bene: timesteps can be different!
+
+        cell = mock.Mock()
+        location_softmax = mock.Mock()
+        location_softmax.attention.states = states
+        pointing_output = mock.Mock()
+
+        decoder = layers.PointingSoftmaxDecoder(
+            cell=cell, location_softmax=location_softmax,
+            pointing_output=pointing_output, input_size=input_size,
+            decoder_inputs=decoder_inputs)
+
+        time0 = tf.constant(0, dtype=tf.int32)
+        time1 = tf.constant(1, dtype=tf.int32)
+        time2 = tf.constant(2, dtype=tf.int32)
+        time3 = tf.constant(3, dtype=tf.int32)
+        time9 = tf.constant(9, dtype=tf.int32)
+
+        FF = np.asarray([False, False])  # pylint: disable=C0103,I0011
+        TT = np.asarray([True, True])  # pylint: disable=C0103,I0011
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            self.assertAllEqual(FF, sess.run(decoder.finished(time0)))
+            self.assertAllEqual(FF, sess.run(decoder.finished(time1)))
+            self.assertAllEqual(TT, sess.run(decoder.finished(time2)))
+            self.assertAllEqual(TT, sess.run(decoder.finished(time3)))
+            self.assertAllEqual(TT, sess.run(decoder.finished(time9)))
 
     def test_finished_without_decoder_inputs(self):  # pylint: disable=C0103
         """Test the .finished() method when decoder inputs are not provided."""

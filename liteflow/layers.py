@@ -538,6 +538,7 @@ class DecoderBase(object):
 class PointingSoftmaxDecoder(DecoderBase):
     """Pointing softmax decoder."""
 
+    # TODO(petrux): check input_size with decoder_input last dim.
     def __init__(self, cell, location_softmax, pointing_output,
                  input_size, decoder_inputs=None, 
                  trainable=True, name=None, **kwargs):
@@ -548,7 +549,15 @@ class PointingSoftmaxDecoder(DecoderBase):
         self._loc = location_softmax
         self._out = pointing_output
         self._inp_size = input_size
-        self._inputs = decoder_inputs
+
+        if decoder_inputs is not None:
+            tensors = tf.transpose(decoder_inputs, [1, 0, 2])
+            dtype = tensors.dtype
+            size = tf.shape(tensors)[0]
+            element_shape = tensors.get_shape()[1:]
+            tensor_array = tf.TensorArray(dtype=dtype, size=size, element_shape=element_shape)
+            decoder_inputs = tensor_array.unstack(tensors)
+        self._inputs_ta = decoder_inputs
 
         # infer the batch/location size from the `states` tensor
         # of the attention layer of the injected location softmax.
@@ -578,16 +587,18 @@ class PointingSoftmaxDecoder(DecoderBase):
             self._batch_size, self._loc_size)
 
     def next_inp(self, time, output):
-        if self._inputs:
+        """Returns the next input."""
+        if self._inputs_ta:
             print(time)
             raise NotImplementedError()
         return ops.fit(output, self._inp_size)
 
     def finished(self, time):
-        if self._inputs:
-            print(time)
-            raise NotImplementedError()
-        return tf.tile([False], [self._batch_size])
+        """flags the finished sequence in the batch."""
+        flag = False
+        if self._inputs_ta:
+            flag = (time + 1) >= self._inputs_ta.size()
+        return tf.tile([flag], [self._batch_size])
 
     def step(self, time, inp, state):
         
