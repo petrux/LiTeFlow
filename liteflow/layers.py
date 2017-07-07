@@ -536,13 +536,63 @@ class DecoderBase(object):
 
 
 class PointingSoftmaxDecoder(DecoderBase):
-    """Pointing softmax decoder."""
+    """Pointing softmax decoder.
+    
+    The PointingSoftmaxDecoder implements a single decoding step using
+    a pointing softmax that can emit a symbol from a shortlist or point
+    one of the words in the input sentence.
+
+    To build a PointingSoftmaxDecoder instance, you need to initialize
+    the instance the following arguments:
+      cell: a `tf.nn.RNNCell`.
+      location_softmax: a `LocationSoftmax` instance.
+      pointing_output: a `PointingSoftmaxOutput` instance.
+      input_size: an `int` representing the desires shape of the input size.
+      decoder_inputs: the (optional) gold decoder inputs to be used in training
+        to feed back the decoder at each timestep.
+      trainable: if `True`, the decoder is trainable.
+      name: a string representing the name of the instance.
+
+    *NOTE* that `input_size` must be an integere and must be the same both in
+    training and in inference mode since it defines the dimension of the weights
+    of the network. All inputs, both the provided ones and those that are fed
+    back from the output, will be fit (trimmed or padded) to such value along
+    their last axis.
+
+    Once built, you cam evaluate the output of the decoder together with
+    the next input and the next state with the PointingSoftmaxDecoder.step()
+    method, that takes as arguments:
+      time: a unit `Tensor` representing the 0-based index of the current timestep.
+      inp: a `2D Tenros` of shape `[batch_size, input_size]` representing the
+        current input.
+      state: a 2 items tuple of elements. The first one is a `2D Tensor of shape
+        `[batch_size, cell_output_size]` and represents the recurrent cell output.
+        The second is the recurrent cell state and its format depends on the cell.
+
+    The method returns:
+      output: a `2D Tensor` of shape `[batch_size, shortlist_size + timesteps]`
+        representing the current output of the decoder. It represents a probability
+        distribution over the items in the shortlist (the first items) and the
+        symbols in the input sequence. So, please, note that the length of this
+        tensor along the last axis may actually change from batch to batch.
+      next_inp: the next `2D Tensor` to be provided as input to the same method.
+      next_state: the next tuple to be passed as the decoder state at the next step.
+      finished: a `1D Tensor` of `tf.bool` items of shape `[batch_size]` that says,
+        for each sequence in the batch, if it should be considered as finished or not.
+    
+    *NOTE* that the `inp` argument for the first step can be built with the method
+    PointingSoftmaxDecoder.init_input(), and the same holds for the `state` argument
+    with the PointingSoftmaxDecoder.init_state() one.
+    """
 
     # TODO(petrux): check input_size with decoder_input last dim.
     def __init__(self, cell, location_softmax, pointing_output,
                  input_size, decoder_inputs=None, 
                  trainable=True, name=None, **kwargs):
-        """Initializes a new PointingSoftmaxDecoder instance."""
+        """Initializes a new PointingSoftmaxDecoder instance.
+        
+        See the class documentation for the escription of all the arguments.
+        """
         super(PointingSoftmaxDecoder, self).__init__(
             trainable=trainable, name=name, **kwargs)
         self._cell = cell
@@ -606,7 +656,31 @@ class PointingSoftmaxDecoder(DecoderBase):
         return tf.tile([flag], [self._batch_size])
 
     def step(self, time, inp, state):
-        
+        """Pointing softmax decoder step.
+
+        Arguments:
+          time: a unit `Tensor` representing the 0-based index of the current timestep.
+          inp: a `2D Tenros` of shape `[batch_size, input_size]` representing the
+            current input.
+          state: a 2 items tuple of elements. The first one is a `2D Tensor of shape
+            `[batch_size, cell_output_size]` and represents the recurrent cell output.  
+            The second is the recurrent cell state and its format depends on the cell.
+
+        Returns:
+          output: a `2D Tensor` of shape `[batch_size, shortlist_size + timesteps]`
+            representing the current output of the decoder. It represents a probability
+            distribution over the items in the shortlist (the first items) and the
+            symbols in the input sequence. So, please, note that the length of this
+            tensor along the last axis may actually change from batch to batch.
+          next_inp: the next `2D Tensor` to be provided as input to the same method.
+          next_state: the next tuple to be passed as the decoder state at the next step.
+          finished: a `1D Tensor` of `tf.bool` items of shape `[batch_size]` that says,
+            for each sequence in the batch, if it should be considered as finished or not.
+    
+        *NOTE* that the `inp` argument for the first step can be built with the method
+        PointingSoftmaxDecoder.init_input(), and the same holds for the `state` argument
+        with the PointingSoftmaxDecoder.init_state() one.
+        """
         # Unpack the state into:
         # `in_cell_out`: the cell output at the previous step,
         # `in_cell_state`: the cell inner stata at the previous step.
@@ -632,13 +706,12 @@ class PointingSoftmaxDecoder(DecoderBase):
         # returns the (time + 1)-th if available, otherwise, fit the
         # current output to the input_size.
         next_inp = self.next_inp(time, output)
-        
+
         # Get the termination flag tensor for the current timestep.
         finished = self.finished(time)
 
         # Return the outputs.
         return output, next_inp, next_state, finished
-        
 
 
 class TerminationHelper(object):
