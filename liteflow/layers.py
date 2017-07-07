@@ -566,10 +566,12 @@ class PointingSoftmaxDecoder(DecoderBase):
         self._loc_size = utils.get_dimension(states, 1)
 
     def init_input(self):
-        return ops.fit(
-            self._out.zero_output(
-                self._batch_size, self._loc_size),
-            self._inp_size) 
+        init_input = None
+        if self._inputs_ta is not None:
+            init_input = ops.fit(self._inputs_ta.read(0), self._inp_size)
+        else:
+            init_input = self.zero_output()
+        return ops.fit(init_input, self._inp_size)
 
     def init_state(self):
         """A tuple of tensors.
@@ -589,8 +591,11 @@ class PointingSoftmaxDecoder(DecoderBase):
     def next_inp(self, time, output):
         """Returns the next input."""
         if self._inputs_ta:
-            print(time)
-            raise NotImplementedError()
+            next_time = time + 1
+            output = tf.cond(
+                next_time < self._inputs_ta.size(),
+                lambda: self._inputs_ta.read(next_time),
+                lambda: self.zero_output())  # pylint: disable=W0108
         return ops.fit(output, self._inp_size)
 
     def finished(self, time):
