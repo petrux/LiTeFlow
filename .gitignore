@@ -4,3 +4,4 @@
 *.py2venv
 *.py3venv
 OLD.*
+liteflow.egg-info
