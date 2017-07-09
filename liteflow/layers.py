@@ -795,9 +795,12 @@ class DynamicDecoder(Layer):
         scope: VariableScope for the created subgraph.
       name: (optional) a string representing the name of the instance.
 
-    Invoking the (parameterless) `decode()` argument, will return a `3D Tensor`
-    of shape `[batch_size, sequence_length, output_size]` representing the output of the
-    decoding phase.
+    Invoking the (parameterless) `decode()` argument, will return a 2 element tuple
+    made of the following items:
+      output: a `3D Tensor` of shape `[batch_size, sequence_length, output_size]`
+        representing the output of the decoding phase.
+      state: the final state of the injected decoder -- which can be an arbitrary
+        structure of `Tensor`s.
     """
 
     def __init__(self, decoder, helper, parallel_iterations=10,
