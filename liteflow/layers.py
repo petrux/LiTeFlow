@@ -630,7 +630,7 @@ class PointingSoftmaxDecoder(DecoderBase):
         (which can be a structure of tensors iteself).
         """
         cell_output = tf.zeros(tf.stack([self._batch_size, self._cell.output_size]))
-        cell_state = self._cell.zero_state(self._batch_size)
+        cell_state = self._cell.zero_state(self._batch_size, tf.float32)
         return (cell_output, cell_state)
 
     def zero_output(self):

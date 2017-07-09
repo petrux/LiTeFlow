@@ -368,7 +368,8 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         cell_state_size = (3, 4)
         input_size = 7
 
-        def _cell_zero_state(batch_size):
+        def _cell_zero_state(batch_size, dtype):
+            self.assertEqual(dtype, tf.float32)
             zero_states = []
             for state_size in cell_state_size:
                 zero_state = tf.zeros(tf.stack([batch_size, state_size]))
@@ -397,7 +398,7 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
              np.zeros([batch_size, cell_state_size[1]])))
 
         zero_state_act_t = decoder.init_state()
-        batch_size_act_t, = cell.zero_state.call_args[0]  # it's a tuple!
+        batch_size_act_t, dtype_act = cell.zero_state.call_args[0]
 
         feed = {states: np.random.rand(batch_size, timesteps, state_size)}  # pylint: disable=E1101,I0011
         with tf.Session() as sess:
@@ -413,6 +414,7 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         for item_exp, item_act in zip(cell_state_exp, cell_state_act):
             self.assertAllEqual(item_exp, item_act)
         self.assertEqual(batch_size, batch_size_act)
+        self.assertEqual(dtype_act, tf.float32)
 
     def test_zero_output(self):
         """Test the .zero_output() method."""
