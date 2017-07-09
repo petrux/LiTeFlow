@@ -585,12 +585,11 @@ class PointingSoftmaxDecoder(DecoderBase):
     with the PointingSoftmaxDecoder.init_state() one.
     """
 
-    # TODO(petrux): check input_size with decoder_input last dim.
     def __init__(self, cell, location_softmax, pointing_output,
-                 input_size, decoder_inputs=None, 
+                 input_size, decoder_inputs=None,
                  trainable=True, name=None, **kwargs):
         """Initializes a new PointingSoftmaxDecoder instance.
-        
+
         See the class documentation for the escription of all the arguments.
         """
         super(PointingSoftmaxDecoder, self).__init__(
@@ -776,13 +775,38 @@ class TerminationHelper(object):
 
 
 class DynamicDecoder(Layer):
-    """Dynamic decoder implementation."""
+    """Dynamic decoder implementation.
 
-    # TODO(petrux): add swap_memory argument
-    # TODO(petrux): add parallel_iterations argument
-    def __init__(self, decoder, helper, name='DynamicDecoder', **kwargs):
+    The DynamicDecoder class implements a dynamic decoding loop around
+    a DecoderBase instance. To build a DynamicDecoder instance you must
+    pass to the initializer the following arguments:
+      decoder: any object implementing the `DecoderBase` type and implementing
+        the single decoding step logics.
+      helper: any object implementing the `TerminationHelper` type.
+      parallel_iterations: (Default: 10). The number of iterations to run in parallel.
+        Those operations which do not have any temporal dependency and can be run in
+        parallel, will be. This parameter trades off time for space. Values >> 1 use more
+        memory but take less time, while smaller values use less memory but computations
+        take longer.
+      swap_memory: Transparently swap the tensors produced in forward inference but needed
+        for back prop from GPU to CPU. This allows training RNNs which would typically not
+        fit on a single GPU, with very minimal (or no) performance penalty.
+        trainable: if `True`, the created variables will be trainable.
+        scope: VariableScope for the created subgraph.
+      name: (optional) a string representing the name of the instance.
+
+    Invoking the (parameterless) `decode()` argument, will return a `3D Tensor`
+    of shape `[batch_size, sequence_length, output_size]` representing the output of the
+    decoding phase.
+    """
+
+    def __init__(self, decoder, helper, parallel_iterations=10,
+                 swap_memory=False, name='DynamicDecoder', **kwargs):
+        """Initializes a DynamicDecoder instance."""
         self._decoder = decoder
         self._helper = helper
+        self._parallel_iterations = parallel_iterations
+        self._swap_memory = swap_memory
         super(DynamicDecoder, self).__init__(
             trainable=decoder.trainable, name=name, **kwargs)
 
@@ -791,24 +815,29 @@ class DynamicDecoder(Layer):
         zoutput = self._decoder.zero_output()
         return tf.where(finished, zoutput, output)
 
-    # TODO(petrux): massive renaming.
     def body(self, time, inp, state, finished, output_ta):
         """Body of the dynamic decoding phase."""
-        output, ninput, nstate, decoder_finished = self._decoder.step(time, inp, state)
+
+        # invoke the decoder step.
+        output, next_inp, next_state, decoder_finished = self._decoder.step(time, inp, state)
+
+        # check the termination status and filter the output.
         next_finished = tf.logical_or(finished, decoder_finished)
-        helper_finished = self._helper.finished(time, output)
-        next_finished = tf.logical_or(next_finished, helper_finished)
-        output = self.output(output, finished)  # NOTA: output is filtered on current finished!
+        next_finished = tf.logical_or(next_finished, self._helper.finished(time, output))
+        output = self.output(output, finished)
+
         output_ta = output_ta.write(time, output)
         ntime = tf.add(time, 1)
-        return ntime, ninput, nstate, next_finished, output_ta
+        return ntime, next_inp, next_state, next_finished, output_ta
 
     # pylint: disable=W0613,I0011
+    # disable unused arguments (needed for the loop).
     def cond(self, time, inp, state, finished, output_ta):
         """Logical contidion for termination."""
         return tf.logical_not(tf.reduce_all(finished))
 
     # pylint: disable=W0221,I0011
+    # disable the changed signature of the method.
     def _call_helper(self):
         time = tf.constant(0, dtype=tf.int32)
         inp = self._decoder.init_input()
@@ -816,7 +845,10 @@ class DynamicDecoder(Layer):
         finished = tf.tile([False], [utils.get_dimension(inp, 0)])
         output_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
         loop_vars = [time, inp, state, finished, output_ta]
-        results = tf.while_loop(cond=self.cond, body=self.body, loop_vars=loop_vars)
+        results = tf.while_loop(
+            cond=self.cond, body=self.body, loop_vars=loop_vars,
+            parallel_iterations=self._parallel_iterations,
+            swap_memory=self._swap_memory)
         output_ta = results[-1]
         output = output_ta.stack()
         output = tf.transpose(output, [1, 0, 2])

@@ -15,7 +15,7 @@ class TestStreamingLoss(tf.test.TestCase):
 
     def test_default(self):
         """Default test case."""
-        # TODO(petrux): add check on tensors in collections.
+
         scope = 'StreamingLossScope'
         targets = tf.constant([[0, 1, 2], [0, 9, 23]], dtype=tf.int32)
         predictions = tf.constant([[0, 1, 2], [0, 9, 23]], dtype=tf.int32)
