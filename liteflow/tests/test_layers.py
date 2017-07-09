@@ -754,6 +754,41 @@ class TestDynamicDecoder(tf.test.TestCase):
         helper.assert_not_called()
         decoder.assert_not_called()
 
+    def test_condition_with_padding(self):
+        """Test the DynamicDecoder.condition() method with paddding."""
+        # pylint: disable=C0103,I0011
+        T, F = True, False
+        bt = lambda *args: tf.convert_to_tensor(list(args), dtype=tf.bool)
+        # pylint: enable=C0103,I0011
+
+        pad_to = tf.placeholder(tf.int32, shape=[])
+
+        dyndec = layers.DynamicDecoder(
+            decoder=mock.Mock(),
+            helper=mock.Mock(),
+            pad_to=pad_to)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # Even if all the sequences in the batch are finished,
+            # but the decoder is asked to pad, the condition will
+            # evaluate to True.
+            time = tf.constant(9, dtype=tf.int32)
+            finished = bt(T, T, T, T)
+            feed = {pad_to: 23}
+            self.assertTrue(sess.run(dyndec.cond(time, None, None, finished, None), feed))
+
+            # Another case to test is when we have to pad to a value
+            # that is already less than time, but the termination helper
+            # doesn't say to stop. In this case, condition will evaluate to true.
+            time = tf.constant(23, dtype=tf.int32)
+            finished = bt(F, F, F, T)
+            feed = {pad_to: 9}
+            self.assertTrue(sess.run(dyndec.cond(time, None, None, finished, None), feed))
+
+        
+
     def test_body(self):
         """Test the DynamicDecoder.body() method."""
         time = tf.constant(2, dtype=tf.int32)

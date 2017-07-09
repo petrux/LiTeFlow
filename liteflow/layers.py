@@ -788,6 +788,11 @@ class DynamicDecoder(Layer):
         parallel, will be. This parameter trades off time for space. Values >> 1 use more
         memory but take less time, while smaller values use less memory but computations
         take longer.
+      pad_to: a (optional) `int` or unit `Tensor` indicating the length along the time
+        axis to pad to. If `None`, the output sequence is terminated as soon as the decoding
+        operation reaches its natural termination. Please note that the maximum length (which
+        is determined by the termination helper, `helper`) can be greater than the padding
+        length.
       swap_memory: Transparently swap the tensors produced in forward inference but needed
         for back prop from GPU to CPU. This allows training RNNs which would typically not
         fit on a single GPU, with very minimal (or no) performance penalty.
@@ -803,11 +808,12 @@ class DynamicDecoder(Layer):
         structure of `Tensor`s.
     """
 
-    def __init__(self, decoder, helper, parallel_iterations=10,
+    def __init__(self, decoder, helper, pad_to=None, parallel_iterations=10,
                  swap_memory=False, name='DynamicDecoder', **kwargs):
         """Initializes a DynamicDecoder instance."""
         self._decoder = decoder
         self._helper = helper
+        self._pad_to = pad_to
         self._parallel_iterations = parallel_iterations
         self._swap_memory = swap_memory
         super(DynamicDecoder, self).__init__(
@@ -837,7 +843,11 @@ class DynamicDecoder(Layer):
     # disable unused arguments (needed for the loop).
     def cond(self, time, inp, state, finished, output_ta):
         """Logical contidion for termination."""
-        return tf.logical_not(tf.reduce_all(finished))
+        continuation = tf.logical_not(tf.reduce_all(finished))
+        if self._pad_to is None:
+            return continuation
+        padding = time < self._pad_to
+        return tf.logical_or(continuation, padding)
 
     # pylint: disable=W0221,I0011
     # disable the changed signature of the method.
