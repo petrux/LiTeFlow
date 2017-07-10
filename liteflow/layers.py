@@ -837,7 +837,6 @@ class DynamicDecoder(Layer):
     # pylint: disable=R0913
     def body(self, time, inp, state, finished, output_ta):
         """Body of the dynamic decoding phase."""
-
         # invoke the decoder step.
         output, next_inp, next_state, decoder_finished = self._decoder.step(time, inp, state)
 
@@ -848,6 +847,8 @@ class DynamicDecoder(Layer):
 
         output_ta = output_ta.write(time, output)
         ntime = tf.add(time, 1)
+
+        next_inp.set_shape(inp.get_shape())
         return ntime, next_inp, next_state, next_finished, output_ta
 
     # pylint: disable=W0613,I0011,R0913
