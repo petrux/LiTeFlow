@@ -26,5 +26,7 @@ source $VENV_DIR/bin/activate
 echo 'installing tensorflow version: '$TF_VERSION
 pip install $TF_VERSION
 pip install -r $REQUIREMENTS --process-dependency-links
+echo 'removing liteflow.egg-info.'
+rm -rf liteflow.egg-info
 echo 'done'
 deactivate
