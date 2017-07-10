@@ -787,8 +787,6 @@ class TestDynamicDecoder(tf.test.TestCase):
             feed = {pad_to: 9}
             self.assertTrue(sess.run(dyndec.cond(time, None, None, finished, None), feed))
 
-        
-
     def test_body(self):
         """Test the DynamicDecoder.body() method."""
         time = tf.constant(2, dtype=tf.int32)
