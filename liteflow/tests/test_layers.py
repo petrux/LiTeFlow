@@ -1,8 +1,9 @@
 """Test module for liteflow.layers module."""
 
 # Disable pylint warning about too many statements
-# and local variables since we are dealing with tests.
-# pylint: disable=R0914, R0915
+# and local variables and lines in module since we are
+# dealing with tests.
+# pylint: disable=R0914,R0915,C0302
 
 import random
 import mock
@@ -64,7 +65,7 @@ class BahdanauAttentionTest(tf.test.TestCase):
         self.assertTrue(len(tf.trainable_variables()) == 0)
 
         initializer = tf.constant_initializer(0.1)
-        with tf.variable_scope('Scope', initializer=initializer) as scope:
+        with tf.variable_scope('Scope', initializer=initializer) as scope:  # pylint: disable=E1129
             states_ = tf.placeholder(
                 dtype=tf.float32,
                 shape=[None, None, state_size],
@@ -168,7 +169,7 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
             dtype=tf.float32)  # [batch_size, state_size]
         initializer = tf.constant_initializer(value=0.1)
 
-        with tf.variable_scope('', initializer=initializer):
+        with tf.variable_scope('', initializer=initializer):  # pylint: disable=E1129
             layer = layers.PointingSoftmaxOutput(
                 shortlist_size=shortlist_size,
                 decoder_out_size=decoder_out_size,
@@ -247,7 +248,7 @@ class TestTerminationHelper(tf.test.TestCase):
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             act_finished = sess.run(finished)
-            
+
         exp_finished = [True, False]
         self.assertAllEqual(exp_finished, act_finished)
 
@@ -258,7 +259,7 @@ class TestTerminationHelper(tf.test.TestCase):
         lengths = tf.constant([4, 5, 6, 7])
         output = tf.random_normal([4, 10, 3], dtype=tf.float32)
         finished = layers.TerminationHelper(lengths).finished(time, output)
-        
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             act_finished = sess.run(finished)
@@ -266,7 +267,7 @@ class TestTerminationHelper(tf.test.TestCase):
         # NOTA BENE: we have set that
         # time = 5
         # lengths = [4, 5, 6, 7]
-        # 
+        #
         # Since the time is 0-based, having time=5 means that
         # we have alread scanned through 5 elements, so only
         # the last sequence in the batch is ongoing.
@@ -291,12 +292,12 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         cell = mock.Mock()
         location_softmax = mock.Mock()
         location_softmax.attention.states = states
-        
+
         pointing_output = mock.Mock()
         def _zero_output(batch_size, loc_size):
             shape = tf.stack([batch_size, shortlist_size + loc_size])
             return tf.zeros(shape, dtype=tf.float32)
-        pointing_output.zero_output.side_effect = _zero_output 
+        pointing_output.zero_output.side_effect = _zero_output
 
         decoder = layers.PointingSoftmaxDecoder(
             cell=cell,
@@ -304,8 +305,6 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             pointing_output=pointing_output,
             input_size=input_size)
         init_input_act_t = decoder.init_input()
-        batch_size_act_t, loc_size_act_t = pointing_output.zero_output.call_args[0]
-
         init_input_exp = np.zeros((batch_size, input_size))
 
         feed = {states: np.random.rand(batch_size, timesteps, state_size)}  # pylint: disable=E1101,I0011
@@ -313,18 +312,16 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             sess.run(tf.global_variables_initializer())
             init_input_act = sess.run(init_input_act_t, feed)
             self.assertAllClose(init_input_exp, init_input_act)
-            batch_size_act, loc_size_act = sess.run([batch_size_act_t, loc_size_act_t], feed)
-            self.assertEqual(batch_size, batch_size_act)
-            self.assertEqual(timesteps, loc_size_act)
 
     def test_init_input_with_decoder_inputs(self):   # pylint: disable=C0103
         """Test the .init_input() method when decoder inputs have been provided."""
+
+        batch_size = 2
         input_size = 4
         decoder_inputs_value = np.asarray(
             [[[1, 1], [2, 2], [3, 3]],
              [[10, 10], [20, 20], [30, 30]]],
-            dtype=np.float32)
-        decoder_inputs_padding = np.zeros(decoder_inputs_value.shape)
+            dtype=np.float32)  # pylint: disable=E1101
 
         decoder_inputs = tf.constant(decoder_inputs_value)
         states = tf.random_normal([2, 10, 7])  # nota bene: timesteps can be different!
@@ -340,18 +337,10 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             cell=cell, location_softmax=location_softmax,
             pointing_output=pointing_output, input_size=input_size,
             decoder_inputs=decoder_inputs)
-
-        # The decoder inputs will be fit (in this case, padded) to the
-        # input_size` paramter along their last axis. The expected input
-        # tensor is shaped in a time-major fashion to ease the iteration
-        # and its first item is expected to be the initial input.
-        decoder_inputs_fit = np.concatenate(
-            (decoder_inputs_value, decoder_inputs_padding), axis=-1)
-        decoder_inputs_time_major = np.transpose(decoder_inputs_fit, axes=[1, 0, 2])
-        init_input_exp = decoder_inputs_time_major[0]
-
         init_input_act_t = decoder.init_input()
-        
+
+        init_input_exp = np.zeros((batch_size, input_size))
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             init_input_act = sess.run(init_input_act_t)
@@ -360,7 +349,7 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
 
     def test_init_state(self):
         """Test the .init_state() method."""
-        
+
         batch_size = 2
         timesteps = 5
         state_size = 9  # useless
@@ -497,7 +486,7 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         location_softmax.attention.states = states
         location_softmax.side_effect = [(location, attention)]
 
-        # OUTPUT. 
+        # OUTPUT.
         out_output = 9 * tf.ones(shape=tf.stack([batch_dim, output_dim]))
         pointing_output = mock.Mock()
         pointing_output.side_effect = [out_output]
@@ -524,7 +513,9 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         location_softmax.assert_called_once_with(in_cell_out)
 
         # 2. Assert that the cell state that has been passed to the inner
-        # recurrent cell is the one coming from the previous step (in_cell_state)
+        # recurrent cell is the one coming from the previous step (in_cell_state).
+        # (apparently pylint doesn't recognize `cell` as a callable mock?)
+        # pylint: disable=E1136
         cell_input_t, in_cell_state_t = tuple(cell.call_args[0])
         self.assertEqual(in_cell_state, in_cell_state_t)
 
@@ -534,8 +525,10 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         pointing_output.assert_called_once_with(out_cell_out, location, attention)
 
         # Actualize the state.
+        # (actually pylint doesn't recognize np.random.rand())
+        # pylint: disable=E1101
         states_np = np.random.rand(batch_size, timesteps, state_size)
-        
+
         # EXPECTED OUTPUT VALUES for the .step() method.
         output_exp = 9 * np.ones((batch_size, output_size))
         next_inp_exp = 9 * np.ones((batch_size, input_size))
@@ -563,12 +556,19 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             self.assertAllEqual(cell_input_exp, cell_input_act)
 
     def test_next_inp_with_decoder_inputs(self): # pylint: disable=C0103
-        """Test the .next_inp method when decoder inputs are provided."""
+        """Test the .next_inp method when decoder inputs are provided.
+
+        *NOTE* that at time `t+1` the desired decoder input is the output
+        from the previous step, `t`, it means that at timestep `t` the next
+        input is the desired output for the very same timestep.
+        """
+
         input_size = 4
+
         decoder_inputs_value = np.asarray(
-            [[[1, 1], [2, 2], [3, 3]],
-             [[10, 10], [20, 20], [30, 30]]],
-            dtype=np.float32)
+            [[[0, 0], [1, 1], [2, 2], [3, 3]],
+             [[0, 0], [10, 10], [20, 20], [30, 30]]],
+            dtype=np.float32)  # pylint: disable=E1101
         decoder_inputs_padding = np.zeros(decoder_inputs_value.shape)
 
         decoder_inputs = tf.constant(decoder_inputs_value)
@@ -587,7 +587,7 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             pointing_output=pointing_output, input_size=input_size,
             decoder_inputs=decoder_inputs)
 
-        # The decoder inputs will be fit (in this case, padded) to the 
+        # The decoder inputs will be fit (in this case, padded) to the
         # input_size` paramter along their last axis. The expected input
         # tensor is shaped in a time-major fashion to ease the iteration.
         # if the next input is queried 'after' the length of the actual
@@ -597,30 +597,21 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
         decoder_inputs_time_major = np.transpose(decoder_inputs_fit, axes=[1, 0, 2])
         decoder_inputs_over = np.zeros_like(decoder_inputs_time_major[0])
 
-        act_timesteps = 3
+        act_timesteps = 4
         max_timesteps = 10
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            # initial value:
-            init_input_exp = decoder_inputs_time_major[0]
-            init_input_act_t = decoder.init_input()
-            init_input_act = sess.run(init_input_act_t)
-            self.assertAllEqual(init_input_exp, init_input_act)
-
-            for next_time in range(1, act_timesteps):
-                current_time = next_time - 1
-                time = tf.constant(current_time, dtype=tf.int32)
-                next_inp_exp = decoder_inputs_time_major[next_time]
-                next_inp_act = sess.run(decoder.next_inp(time, output))
-                self.assertAllEqual(next_inp_exp, next_inp_act)
-            for next_time in range(act_timesteps, max_timesteps):
-                current_time = next_time - 1
-                time = tf.constant(next_time, dtype=tf.int32)
-                next_inp_exp = decoder_inputs_over
-                next_inp_act = sess.run(decoder.next_inp(time, output))
-                self.assertAllEqual(next_inp_exp, next_inp_act)
-
+            for i in range(act_timesteps):
+                time = tf.constant(i, dtype=tf.int32, shape=[])
+                next_input_exp = decoder_inputs_time_major[i]
+                next_input_act = sess.run(decoder.next_inp(time, output))
+                self.assertAllEqual(next_input_exp, next_input_act)
+            for i in range(act_timesteps, max_timesteps):
+                time = tf.constant(i, dtype=tf.int32, shape=[])
+                next_input_exp = decoder_inputs_over
+                next_input_act = sess.run(decoder.next_inp(time, output))
+                self.assertAllEqual(next_input_exp, next_input_act)
 
     def test_next_inp_without_decoder_inputs(self):  # pylint: disable=C0103
         """Test the .next_inp method when decoder inputs are not provided."""
@@ -640,21 +631,22 @@ class TestPointingSoftmaxDecoder(tf.test.TestCase):
             cell=cell, location_softmax=location_softmax,
             pointing_output=pointing_output, input_size=input_size)
         next_inp_t = decoder.next_inp(time, output)
-        
+
+        # pylint: disable=E1101
         next_inp_exp = np.asarray([[1, 1, 1, 0], [2, 2, 2, 0], [3, 3, 3, 0]], dtype=np.float32)
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             next_inp_act = sess.run(next_inp_t)
             self.assertAllEqual(next_inp_exp, next_inp_act)
 
-    def test_finished_with_decoder_input(self):  # pylint: disable=C0103
+    def test_finished_with_decoder_inputs(self):  # pylint: disable=C0103
         """Test the .finished() method when decoder inputs are not provided."""
 
         input_size = 4
         decoder_inputs_value = np.asarray(
             [[[1, 1], [2, 2], [3, 3]],
              [[10, 10], [20, 20], [30, 30]]],
-            dtype=np.float32)
+            dtype=np.float32)  # pylint: disable=E1101
         decoder_inputs = tf.constant(decoder_inputs_value)
         states = tf.random_normal([2, 10, 7])  # nota bene: timesteps can be different!
 
@@ -934,7 +926,6 @@ class TestDynamicDecoder(tf.test.TestCase):
             helper_finished_02]  # time=2
 
         # STEP BY STEP EVALUATION OF `finished` flags.
-        from liteflow import utils
         dyndec = layers.DynamicDecoder(decoder, helper)
 
         time = tf.constant(0, dtype=tf.int32)
@@ -947,7 +938,7 @@ class TestDynamicDecoder(tf.test.TestCase):
         time = results_00[0]
         finished = results_00[3]
         results_00[-1].stack()
-        
+
         feed = {inp: init_value}
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -1037,7 +1028,7 @@ class TestDynamicDecoder(tf.test.TestCase):
              [7, 7, 7, 7, 7],
              [7, 7, 7, 7, 7]],
             dtype=np.float32) # pylint: disable=E1101,I0011
-        
+
         dyndec = layers.DynamicDecoder(decoder, helper)
         output_t, state_t = dyndec.decode()
 

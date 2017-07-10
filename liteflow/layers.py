@@ -5,7 +5,6 @@
 #   alive an' kickin' in TF, there is no need anymore of such stuff.
 
 import abc
-import functools
 import tensorflow as tf
 
 from liteflow import ops
@@ -145,6 +144,7 @@ class Layer(object):
           a tuple of output tensors (or `None`).
         """
         self._set_scope(kwargs.pop('scope', None))
+        # pylint: disable=E1129
         with tf.variable_scope(self._scope) as scope:
             if self._reuse:
                 scope.reuse_variables()
@@ -384,6 +384,7 @@ class PointingSoftmaxOutput(Layer):
     _SHORTLIST_KERNEL_NAME = 'ShortlistKernel'
     _SHORTLIST_BIAS_NAME = 'ShortlistBias'
 
+    # pylint: disable=R0913
     def __init__(self, shortlist_size, decoder_out_size, state_size,
                  trainable=True, scope='PointingSoftmaxOutput'):
         """Initializes a new instance.
@@ -467,7 +468,7 @@ class DecoderBase(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, trainable=True, name=None, **kwargs):
+    def __init__(self, trainable=True, name=None, **kwargs):  # pylint: disable=W0613
         self._trainable = trainable
         self._name = name or self.__class__.__name__
 
@@ -537,7 +538,7 @@ class DecoderBase(object):
 
 class PointingSoftmaxDecoder(DecoderBase):
     """Pointing softmax decoder.
-    
+
     The PointingSoftmaxDecoder implements a single decoding step using
     a pointing softmax that can emit a symbol from a shortlist or point
     one of the words in the input sentence.
@@ -579,12 +580,13 @@ class PointingSoftmaxDecoder(DecoderBase):
       next_state: the next tuple to be passed as the decoder state at the next step.
       finished: a `1D Tensor` of `tf.bool` items of shape `[batch_size]` that says,
         for each sequence in the batch, if it should be considered as finished or not.
-    
+
     *NOTE* that the `inp` argument for the first step can be built with the method
     PointingSoftmaxDecoder.init_input(), and the same holds for the `state` argument
     with the PointingSoftmaxDecoder.init_state() one.
     """
 
+    # pylint: disable=R0913
     def __init__(self, cell, location_softmax, pointing_output,
                  input_size, decoder_inputs=None,
                  trainable=True, name=None, **kwargs):
@@ -615,16 +617,13 @@ class PointingSoftmaxDecoder(DecoderBase):
         self._loc_size = utils.get_dimension(states, 1)
 
     def init_input(self):
-        init_input = None
-        if self._inputs_ta is not None:
-            init_input = ops.fit(self._inputs_ta.read(0), self._inp_size)
-        else:
-            init_input = self.zero_output()
-        return ops.fit(init_input, self._inp_size)
+        input_shape = tf.stack([self._batch_size, self._inp_size])
+        init_input = tf.zeros(input_shape, dtype=tf.float32)
+        return init_input
 
     def init_state(self):
         """A tuple of tensors.
-        
+
         The state of a pointing softmax decoder is made of a 2 elements tuple
         carring the output and the inner state of the internal recurrent cell
         (which can be a structure of tensors iteself).
@@ -638,12 +637,22 @@ class PointingSoftmaxDecoder(DecoderBase):
             self._batch_size, self._loc_size)
 
     def next_inp(self, time, output):
-        """Returns the next input."""
+        """Returns the next input.
+
+        Arguments:
+          time: a `int` or unit `Tensor` representing the current timestep.
+          output: a `2D Tensor` of shape `[batch_size, output_size]` representing
+            the current output.
+
+        *NOTE* that at time `t+1` the desired decoder input is the output
+        from the previous step, `t`, it means that at timestep `t` the next
+        input is the desired output for the very same timestep, if decoder
+        inputs have been provided -- otherwise is just the current output.
+        """
         if self._inputs_ta:
-            next_time = time + 1
             output = tf.cond(
-                next_time < self._inputs_ta.size(),
-                lambda: self._inputs_ta.read(next_time),
+                time < self._inputs_ta.size(),
+                lambda: self._inputs_ta.read(time),
                 lambda: self.zero_output())  # pylint: disable=W0108
         return ops.fit(output, self._inp_size)
 
@@ -662,7 +671,7 @@ class PointingSoftmaxDecoder(DecoderBase):
           inp: a `2D Tenros` of shape `[batch_size, input_size]` representing the
             current input.
           state: a 2 items tuple of elements. The first one is a `2D Tensor of shape
-            `[batch_size, cell_output_size]` and represents the recurrent cell output.  
+            `[batch_size, cell_output_size]` and represents the recurrent cell output.
             The second is the recurrent cell state and its format depends on the cell.
 
         Returns:
@@ -675,7 +684,7 @@ class PointingSoftmaxDecoder(DecoderBase):
           next_state: the next tuple to be passed as the decoder state at the next step.
           finished: a `1D Tensor` of `tf.bool` items of shape `[batch_size]` that says,
             for each sequence in the batch, if it should be considered as finished or not.
-    
+
         *NOTE* that the `inp` argument for the first step can be built with the method
         PointingSoftmaxDecoder.init_input(), and the same holds for the `state` argument
         with the PointingSoftmaxDecoder.init_state() one.
@@ -713,7 +722,7 @@ class PointingSoftmaxDecoder(DecoderBase):
         return output, next_inp, next_state, finished
 
 
-class TerminationHelper(object):
+class TerminationHelper(object):  # pylint: disable=R0903
     """Helps the termination for a loop over a batch of sequences.
 
     Given the current time of the loop and the current output, returns a
@@ -808,6 +817,7 @@ class DynamicDecoder(Layer):
         structure of `Tensor`s.
     """
 
+    # pylint: disable=R0913
     def __init__(self, decoder, helper, pad_to=None, parallel_iterations=10,
                  swap_memory=False, name='DynamicDecoder', **kwargs):
         """Initializes a DynamicDecoder instance."""
@@ -824,6 +834,7 @@ class DynamicDecoder(Layer):
         zoutput = self._decoder.zero_output()
         return tf.where(finished, zoutput, output)
 
+    # pylint: disable=R0913
     def body(self, time, inp, state, finished, output_ta):
         """Body of the dynamic decoding phase."""
 
@@ -839,7 +850,7 @@ class DynamicDecoder(Layer):
         ntime = tf.add(time, 1)
         return ntime, next_inp, next_state, next_finished, output_ta
 
-    # pylint: disable=W0613,I0011
+    # pylint: disable=W0613,I0011,R0913
     # disable unused arguments (needed for the loop).
     def cond(self, time, inp, state, finished, output_ta):
         """Logical contidion for termination."""
