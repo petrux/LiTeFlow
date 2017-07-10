@@ -6,10 +6,6 @@ import tensorflow as tf
 EPSILON = 10e-8
 
 
-def _fix_last_dim(tensor, value):
-    tensor.set_shape(tensor.get_shape().as_list()[:-1] + [value])
-
-
 def _trim(tensor, width):
     """Trim the tensor along the -1 axis to the target width."""
     begin = [0] * tensor.shape.ndims  # , 0, 0]
@@ -61,6 +57,7 @@ def trim(tensor, width):
         tf.less_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _trim(tensor, width))
+    result.set_shape(tensor.get_shape().as_list()[:-1] + [width])
     return result
 
 
@@ -115,6 +112,7 @@ def pad(tensor, width):
         tf.greater_equal(tf.shape(tensor)[-1], width),
         lambda: tensor,
         lambda: _pad(tensor, width))
+    result.set_shape(tensor.get_shape().as_list()[:-1] + [width])
     return result
 
 def _fit(tensor, width):
@@ -218,7 +216,7 @@ def fit(tensor, width):
     result = tf.cond(tf.equal(actual, width),
                      lambda: tensor,
                      lambda: _fit(tensor, width))
-    _fix_last_dim(result, width)
+    result.set_shape(tensor.get_shape().as_list()[:-1] + [width])
     return result
 
 

@@ -170,7 +170,6 @@ class FitTrimPadTest(tf.test.TestCase):
         self.assertAllClose(input_actual, output_same_actual)
         self.assertAllClose(input_actual, output_smaller_actual)
 
-
     def test_pad_to_greater_width(self):
         """Pad a tensor to a larger one.
 

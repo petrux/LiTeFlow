@@ -654,7 +654,8 @@ class PointingSoftmaxDecoder(DecoderBase):
                 time < self._inputs_ta.size(),
                 lambda: self._inputs_ta.read(time),
                 lambda: self.zero_output())  # pylint: disable=W0108
-        return ops.fit(output, self._inp_size)
+        next_inp = ops.fit(output, self._inp_size)
+        return next_inp
 
     def finished(self, time):
         """flags the finished sequence in the batch."""
@@ -848,7 +849,6 @@ class DynamicDecoder(Layer):
         output_ta = output_ta.write(time, output)
         ntime = tf.add(time, 1)
 
-        next_inp.set_shape(inp.get_shape())
         return ntime, next_inp, next_state, next_finished, output_ta
 
     # pylint: disable=W0613,I0011,R0913
