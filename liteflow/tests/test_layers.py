@@ -182,19 +182,28 @@ class TestPointingSoftmaxOutput(tf.test.TestCase):
         # the expected output has shape [batch, output_size] where
         # output size is given by the sum:
         # output_size = emission_size + pointing_size
+        # exp_output = np.asarray(
+        #     [[0.49811914, 0.49811914, 0.49811914, 0.49811914, 0.49811914,
+        #       0.49811914, 0.49811914, 0.01679816, 0.01679816, 0.01679816,
+        #       0.03359632, 0.08399081],
+        #      [0.60730052, 0.60730052, 0.60730052, 0.60730052, 0.60730052,
+        #       0.60730052, 0.60730052, 0.01822459, 0.00911230, 0.04556148,
+        #       0.00911230, 0.0091123]],
+        #     dtype=np.float32)  # pylint: disable=I0011,E1101
+
         exp_output = np.asarray(
-            [[0.49811914, 0.49811914, 0.49811914, 0.49811914, 0.49811914,
-              0.49811914, 0.49811914, 0.01679816, 0.01679816, 0.01679816,
-              0.03359632, 0.08399081],
-             [0.60730052, 0.60730052, 0.60730052, 0.60730052, 0.60730052,
-              0.60730052, 0.60730052, 0.01822459, 0.00911230, 0.04556148,
-              0.00911230, 0.0091123]],
+            [[0.11886, 0.11886, 0.11886, 0.11886, 0.11886, 0.11886,
+              0.11886, 0.016798, 0.016798, 0.016798, 0.033596, 0.083991],
+             [0.12984, 0.12984, 0.12984, 0.12984, 0.12984, 0.12984,
+              0.12984, 0.018225, 0.009112, 0.045561, 0.009112, 0.009112]],
             dtype=np.float32)  # pylint: disable=I0011,E1101
         exp_output_shape = (batch_size, output_size)
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             act_output = sess.run(output)
+        for output in act_output:
+            self.assertAllClose(sum(output), 1)
         self.assertEqual(exp_output_shape, exp_output.shape)
         self.assertAllClose(exp_output, act_output)
 

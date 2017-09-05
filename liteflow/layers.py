@@ -453,7 +453,7 @@ class PointingSoftmaxOutput(Layer):
         switch = tf.matmul(switch_in, switch_kernel) + switch_bias
         switch = tf.nn.sigmoid(switch)
         shortlist = tf.matmul(decoder_out, shortlist_kernel) + shortlist_bias
-        shortlist = tf.nn.sigmoid(shortlist)
+        shortlist = tf.nn.softmax(shortlist)
         output = tf.concat([switch * shortlist, (1 - switch) * location_scores], axis=1)
         return output
 
